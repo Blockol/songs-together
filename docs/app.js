@@ -1072,9 +1072,6 @@ function bindSettings() {
 // Sonst: normales Popup-Fenster. Die Musik läuft weiter im Haupt-Tab, das Mini-Fenster steuert ihn nur.
 
 const PIP_SUPPORTED = 'documentPictureInPicture' in window;
-// Opera zeigt im Popup die Adresszeile – mit einer echten Seite steht dort die Website statt „about:blank“
-const IS_OPERA = /OPR\//.test(navigator.userAgent)
-  || Boolean(navigator.userAgentData?.brands?.some((b) => /opera/i.test(b.brand)));
 const miniPinned = () => store.get('miniPin') !== '0';
 let mini = null; // { win, doc, $, seeking }
 const MINI_TITLE = 'Songs Together Mini-Player';
@@ -1177,8 +1174,9 @@ async function openMini() {
       if (!win?.document?.body) { win = null; pinPopup = true; }
     }
     if (!win) {
-      win = window.open(IS_OPERA ? 'mini.html' : '', 'songs-together-mini', `popup,width=${W},height=${H}${pos}`);
-      if (win && IS_OPERA) await miniPageLoaded(win);
+      // Echte Seite statt leerem Fenster: in der Adresszeile steht dann die Website statt „about:blank“
+      win = window.open('mini.html', 'songs-together-mini', `popup,width=${W},height=${H}${pos}`);
+      if (win) await miniPageLoaded(win);
     }
   } catch (e) {
     toast('Mini-Player konnte nicht geöffnet werden: ' + e.message, true);
