@@ -65,6 +65,7 @@ Koppelt den Mini-Player an die Spotify-App für Windows:
 - Spotify-Fenster offen (auch ohne Fokus) -> Mini-Player ist sichtbar
 - Spotify minimiert / geschlossen         -> Mini-Player verschwindet sofort
 - Spotify-Fenster verschieben         -> Mini-Player wandert mit
+- Spotify-Fenster größer/kleiner      -> Mini-Player skaliert mit (eigene Größe bleibt gemerkt)
 Einrichten:
 1. Herunterladen: Einstellungen (Zahnrad) -> Link "Songs Together Sync", oder direkt
    https://github.com/Blockol/songs-together/releases/latest/download/SongsTogether-Sync.exe

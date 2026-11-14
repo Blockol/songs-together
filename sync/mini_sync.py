@@ -4,6 +4,7 @@ Koppelt den Mini-Player von Songs Together an die Spotify-App für Windows:
   * Spotify-Fenster offen            -> Mini-Player ist sichtbar (egal welches Fenster im Fokus ist)
   * Spotify minimiert / geschlossen  -> Mini-Player wird sofort ausgeblendet
   * Spotify-Fenster wird verschoben -> Mini-Player wandert mit
+  * Spotify-Fenster wird größer/kleiner -> Mini-Player skaliert im selben Verhältnis mit
   * Mini-Player neu geöffnet         -> erscheint wieder an derselben Stelle im Spotify-Fenster
 
 Läuft unsichtbar im Hintergrund mit einem Symbol im Infobereich der Taskleiste.
@@ -12,6 +13,7 @@ Nur Windows. Nutzt die Windows-API direkt über ctypes.
 
 import ctypes
 import json
+import math
 import os
 import sys
 import threading
@@ -185,7 +187,8 @@ def load_position():
     try:
         with open(POSITION_FILE, encoding="utf-8") as f:
             d = json.load(f)
-        return {k: (str(d[k]) if k in ("ax", "ay") else int(d[k])) for k in d if k in ("x", "y", "ax", "dx", "ay", "dy")}
+        kinds = {"x": int, "y": int, "dx": int, "dy": int, "ax": str, "ay": str, "rw": float, "rh": float}
+        return {k: kinds[k](v) for k, v in d.items() if k in kinds}
     except (OSError, ValueError, TypeError, AttributeError):
         return {}
 
@@ -216,6 +219,26 @@ def relative_to(mini, spotify):
     else:
         ay, dy = "bottom", (my + mh) - (sy + sh)
     return {"ax": ax, "dx": dx, "ay": ay, "dy": dy}
+
+
+MIN_W, MIN_H = 120, 80   # kleiner wird der Mini-Player beim Mitskalieren nicht
+
+
+def scale_ref(spotify):
+    """Bezugsgröße des Spotify-Fensters fürs Mitskalieren (Wurzel der Fläche):
+    wird Spotify nur schmaler oder nur niedriger, schrumpft der Mini-Player ein wenig mit,
+    behält aber sein eigenes Seitenverhältnis."""
+    _, _, sw, sh = spotify
+    return math.sqrt(max(1, sw) * max(1, sh))
+
+
+def scaled_size(scale, spotify):
+    rw, rh = scale
+    ref = scale_ref(spotify)
+    _, _, sw, sh = spotify
+    w = max(MIN_W, min(round(rw * ref), sw))
+    h = max(MIN_H, min(round(rh * ref), sh))
+    return w, h
 
 
 def place_relative(rel, mini_size, spotify):
@@ -270,6 +293,27 @@ class Sync:
         self.saved_pos = load_position()
         self.pending_pos = None      # zuletzt beobachtete, noch nicht gespeicherte Position
         self.pending_since = 0.0
+        p = self.saved_pos
+        self.scale = (p["rw"], p["rh"]) if "rw" in p and "rh" in p else None
+        self.applied_size = None     # Größe, die WIR dem Mini-Player zuletzt gegeben haben
+
+    def scale_of(self, mini_r, spotify_r):
+        """Größe des Mini-Players im Verhältnis zum Spotify-Fenster.
+
+        Solange er noch genau so groß ist, wie wir ihn zuletzt gesetzt haben, bleibt das gemerkte
+        Verhältnis bestehen (sonst würden Runden und Mindestgröße es nach und nach verfälschen).
+        Hat ihn jemand selbst größer/kleiner gezogen, gilt ab jetzt das neue Verhältnis."""
+        size = tuple(mini_r[2:])
+        if self.scale and size == self.applied_size:
+            return self.scale
+        ref = scale_ref(spotify_r)
+        self.scale = (size[0] / ref, size[1] / ref)
+        self.applied_size = size
+        return self.scale
+
+    def set_mini_rect(self, x, y, w, h):
+        user32.SetWindowPos(self.mini, None, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE)
+        self.applied_size = tuple(rect(self.mini)[2:])  # Chrome kann eine Mindestgröße erzwingen
 
     def show_mini(self):
         if self.mini and self.hidden:
@@ -314,7 +358,13 @@ class Sync:
         p = self.saved_pos
         _, _, w, h = rect(self.mini)
         if self.spotify and not user32.IsIconic(self.spotify) and "ax" in p:
-            x, y = place_relative(p, (w, h), rect(self.spotify))
+            sp = rect(self.spotify)
+            if self.scale:  # Größe an das jetzige Spotify-Fenster anpassen
+                w, h = scaled_size(self.scale, sp)
+            x, y = place_relative(p, (w, h), sp)
+            if on_some_monitor(x, y, w, h):
+                self.set_mini_rect(x, y, w, h)
+            return
         elif "x" in p:
             x, y = p["x"], p["y"]
         else:
@@ -330,7 +380,10 @@ class Sync:
         r = rect(self.mini)
         pos = dict(self.saved_pos, x=r[0], y=r[1])
         if self.spotify and not user32.IsIconic(self.spotify):
-            pos.update(relative_to(r, rect(self.spotify)))
+            sp = rect(self.spotify)
+            pos.update(relative_to(r, sp))
+            rw, rh = self.scale_of(r, sp)
+            pos.update(rw=round(rw, 5), rh=round(rh, 5))
         if pos == self.saved_pos:
             self.pending_pos = None
             return
@@ -341,7 +394,8 @@ class Sync:
             save_position(pos)
 
     def follow_spotify(self):
-        """Verschiebt den Mini-Player um dieselbe Strecke wie das Spotify-Fenster."""
+        """Verschiebt den Mini-Player um dieselbe Strecke wie das Spotify-Fenster und
+        skaliert ihn mit, wenn Spotify größer oder kleiner wird."""
         if not self.spotify or user32.IsIconic(self.spotify):
             return
         cur = rect(self.spotify)
@@ -349,11 +403,18 @@ class Sync:
         if not prev or not self.mini or cur == prev:
             return
         dx, dy = cur[0] - prev[0], cur[1] - prev[1]
-        # Nur reines Verschieben übernehmen, nicht Größenänderung/Maximieren
-        if (dx or dy) and cur[2:] == prev[2:]:
-            x, y, _, _ = rect(self.mini)
-            user32.SetWindowPos(self.mini, None, x + dx, y + dy, 0, 0,
+        mr = rect(self.mini)
+        if cur[2:] == prev[2:]:  # nur verschoben
+            user32.SetWindowPos(self.mini, None, mr[0] + dx, mr[1] + dy, 0, 0,
                                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+            return
+        if self.hidden or user32.IsIconic(self.mini):
+            return
+        # Größe geändert (auch Maximieren): gleiche Ecke, gleicher Abstand, gleiches Größenverhältnis
+        rel = relative_to(mr, prev)
+        w, h = scaled_size(self.scale_of(mr, prev), cur)
+        x, y = place_relative(rel, (w, h), cur)
+        self.set_mini_rect(x, y, w, h)
 
     def tick(self):
         now = time.monotonic()
