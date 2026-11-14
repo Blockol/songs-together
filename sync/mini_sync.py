@@ -4,7 +4,7 @@ Koppelt den Mini-Player von Songs Together an die Spotify-App für Windows:
   * Spotify-Fenster offen            -> Mini-Player ist sichtbar (egal welches Fenster im Fokus ist)
   * Spotify minimiert / geschlossen  -> Mini-Player wird sofort ausgeblendet
   * Spotify-Fenster wird verschoben -> Mini-Player wandert mit
-  * Mini-Player neu geöffnet         -> erscheint wieder dort, wo er zuletzt war
+  * Mini-Player neu geöffnet         -> erscheint wieder an derselben Stelle im Spotify-Fenster
 
 Läuft unsichtbar im Hintergrund mit einem Symbol im Infobereich der Taskleiste.
 Nur Windows. Nutzt die Windows-API direkt über ctypes.
@@ -185,18 +185,45 @@ def load_position():
     try:
         with open(POSITION_FILE, encoding="utf-8") as f:
             d = json.load(f)
-        return int(d["x"]), int(d["y"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
+        return {k: (str(d[k]) if k in ("ax", "ay") else int(d[k])) for k in d if k in ("x", "y", "ax", "dx", "ay", "dy")}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
 
 
 def save_position(pos):
     try:
         os.makedirs(os.path.dirname(POSITION_FILE), exist_ok=True)
         with open(POSITION_FILE, "w", encoding="utf-8") as f:
-            json.dump({"x": pos[0], "y": pos[1]}, f)
+            json.dump(pos, f)
     except OSError:
         pass
+
+
+def relative_to(mini, spotify):
+    """Lage des Mini-Players im Spotify-Fenster, gemessen von der nächstgelegenen Ecke.
+
+    Liegt der Mini-Player z. B. unten rechts, bleibt er auch bei anderer Fenstergröße
+    mit demselben Abstand unten rechts.
+    """
+    mx, my, mw, mh = mini
+    sx, sy, sw, sh = spotify
+    if mx + mw / 2 < sx + sw / 2:
+        ax, dx = "left", mx - sx
+    else:
+        ax, dx = "right", (mx + mw) - (sx + sw)
+    if my + mh / 2 < sy + sh / 2:
+        ay, dy = "top", my - sy
+    else:
+        ay, dy = "bottom", (my + mh) - (sy + sh)
+    return {"ax": ax, "dx": dx, "ay": ay, "dy": dy}
+
+
+def place_relative(rel, mini_size, spotify):
+    mw, mh = mini_size
+    sx, sy, sw, sh = spotify
+    x = sx + rel["dx"] if rel["ax"] == "left" else sx + sw + rel["dx"] - mw
+    y = sy + rel["dy"] if rel["ay"] == "top" else sy + sh + rel["dy"] - mh
+    return x, y
 
 
 # ------------------------------------------------------------------ Autostart
@@ -282,20 +309,28 @@ class Sync:
             self.first_scan = False
 
     def restore_position(self):
-        """Neu geöffneten Mini-Player dorthin setzen, wo er zuletzt war."""
-        if not self.saved_pos:
-            return
-        x, y = self.saved_pos
+        """Neu geöffneten Mini-Player an dieselbe Stelle im Spotify-Fenster setzen
+        (ist Spotify gerade nicht offen: an dieselbe Stelle auf dem Bildschirm)."""
+        p = self.saved_pos
         _, _, w, h = rect(self.mini)
+        if self.spotify and not user32.IsIconic(self.spotify) and "ax" in p:
+            x, y = place_relative(p, (w, h), rect(self.spotify))
+        elif "x" in p:
+            x, y = p["x"], p["y"]
+        else:
+            return
         if on_some_monitor(x, y, w, h):
             user32.SetWindowPos(self.mini, None, x, y, 0, 0,
                                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
 
     def remember_position(self, now):
         """Position des Mini-Players speichern, sobald sie sich eine Sekunde nicht mehr ändert."""
-        if user32.IsIconic(self.mini):
+        if user32.IsIconic(self.mini) or self.hidden:
             return
-        pos = rect(self.mini)[:2]
+        r = rect(self.mini)
+        pos = dict(self.saved_pos, x=r[0], y=r[1])
+        if self.spotify and not user32.IsIconic(self.spotify):
+            pos.update(relative_to(r, rect(self.spotify)))
         if pos == self.saved_pos:
             self.pending_pos = None
             return
