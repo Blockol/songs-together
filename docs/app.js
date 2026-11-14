@@ -2,9 +2,9 @@
 // Ablauf: Spotify-Login (PKCE) → Raum betreten → Web Playback SDK spielt im Browser,
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
-import { CLIENT_ID } from './config.js?v=8';
-import { Net } from './net.js?v=8';
-import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=8';
+import { CLIENT_ID } from './config.js?v=9';
+import { Net } from './net.js?v=9';
+import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=9';
 
 const $ = (s) => document.querySelector(s);
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state';
@@ -877,6 +877,61 @@ function applyCustomColor(hex) {
   $('#custom-dot')?.style.setProperty('background', hex);
   updateFavicon();
   if ($('#hex') && document.activeElement !== $('#hex')) $('#hex').value = hex;
+  renderColorSlots();
+}
+
+// Eine Farbe übernehmen und Farbrad, Helligkeit und Hex-Feld nachziehen
+function pickCustomColor(hex) {
+  applyCustomColor(hex.toLowerCase());
+  if (!wheel) return;
+  wheel.setHex(hex);
+  $('#brightness').value = Math.round(wheel.v * 100);
+  setFill($('#brightness'));
+}
+
+// ---------- 3 Speicherplätze für eigene Farben
+const SLOT_COUNT = 3;
+let colorSlots = (() => {
+  try {
+    const arr = JSON.parse(store.get('colorSlots') || '[]');
+    return Array.from({ length: SLOT_COUNT }, (_, i) => (hexToRgb(arr[i]) ? arr[i] : null));
+  } catch { return Array(SLOT_COUNT).fill(null); }
+})();
+
+function saveColorSlots() { store.set('colorSlots', JSON.stringify(colorSlots)); renderColorSlots(); }
+
+function renderColorSlots() {
+  const box = $('#color-slots');
+  if (!box) return;
+  box.replaceChildren(...colorSlots.map((hex, i) => {
+    const slot = document.createElement('div');
+    slot.className = 'color-slot' + (hex ? '' : ' empty');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'slot-main';
+    if (hex) {
+      b.style.background = hex;
+      b.title = `${hex} übernehmen`;
+      b.setAttribute('aria-label', `Gespeicherte Farbe ${i + 1} (${hex}) übernehmen`);
+      if (hex === customColor) slot.classList.add('current');
+      b.onclick = () => pickCustomColor(hex);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'slot-del';
+      del.textContent = '×';
+      del.title = 'Platz leeren';
+      del.setAttribute('aria-label', `Speicherplatz ${i + 1} leeren`);
+      del.onclick = () => { colorSlots[i] = null; saveColorSlots(); };
+      slot.append(b, del);
+    } else {
+      b.textContent = '+';
+      b.title = 'Aktuelle Farbe hier speichern';
+      b.setAttribute('aria-label', `Aktuelle Farbe in Platz ${i + 1} speichern`);
+      b.onclick = () => { colorSlots[i] = customColor; saveColorSlots(); toast('Farbe gespeichert'); };
+      slot.append(b);
+    }
+    return slot;
+  }));
 }
 
 function clearCustomColor() {
@@ -942,15 +997,11 @@ function bindSettings() {
   $('#hex').addEventListener('input', (e) => {
     let v = e.target.value.trim();
     if (!v.startsWith('#')) v = '#' + v;
-    if (hexToRgb(v)) {
-      applyCustomColor(v.toLowerCase());
-      wheel?.setHex(v);
-      brightness.value = Math.round(wheel.v * 100);
-      setFill(brightness);
-    }
+    if (hexToRgb(v)) pickCustomColor(v);
   });
 
   setTheme(document.documentElement.dataset.theme);
+  renderColorSlots();
 
   const open = () => {
     modal.classList.remove('hidden');
@@ -1003,7 +1054,10 @@ const MINI_HTML = `
         <input type="range" min="0" max="100" data-m="vol" aria-label="Lautstärke">
       </div>
     </div>
-    <div class="mini-drop">Songs, Alben oder Playlists aus Spotify <strong>hierher ziehen</strong><br>oder Link mit Strg+V einfügen</div>
+    <div class="mini-drop">
+      <span class="drop-long">Songs, Alben oder Playlists aus Spotify <strong>hierher ziehen</strong><br>oder Link mit Strg+V einfügen</span>
+      <span class="drop-short"><b>+</b>Songs hierher ziehen</span>
+    </div>
     <div class="mini-head" data-m="qhead">Als Nächstes</div>
     <ol class="tracklist mini-queue" data-m="queue"></ol>
     <div class="empty muted" data-m="qempty">Die Warteschlange ist leer.</div>
@@ -1028,7 +1082,7 @@ async function openMini() {
   doc.body.replaceChildren();
   doc.title = 'Songs Together';
   const meta = doc.createElement('meta'); meta.setAttribute('charset', 'utf-8');
-  const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('style.css?v=8', location.href).href;
+  const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('style.css?v=9', location.href).href;
   const icon = doc.createElement('link'); icon.rel = 'icon'; icon.href = $('#favicon').href;
   doc.head.append(meta, css, icon);
   doc.documentElement.lang = 'de';

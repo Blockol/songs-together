@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Songs Together</title>
   <link id="favicon" rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
   <script>
     // Design sofort setzen, damit die Seite nicht kurz in Grün aufblitzt
     try {
@@ -162,6 +162,8 @@
             <input id="brightness" type="range" min="20" max="100" value="85">
             <label for="hex" class="small muted">Hex-Code</label>
             <input id="hex" maxlength="7" spellcheck="false" autocomplete="off">
+            <span class="small muted">Gespeicherte Farben</span>
+            <div id="color-slots" class="color-slots"></div>
             <button class="btn primary small" type="button" tabindex="-1">Vorschau</button>
           </div>
         </div>
@@ -182,6 +184,6 @@
   <div id="toasts" class="toasts"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="app.js?v=8" type="module"></script>
+  <script src="app.js?v=9" type="module"></script>
 </body>
 </html>
