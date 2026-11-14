@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Songs Together</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Login -->
+  <section id="view-login" class="view center hidden">
+    <div class="card hero">
+      <div class="logo"><img src="/icon.svg" alt=""> Songs Together</div>
+      <p class="muted">Gemeinsam Spotify hören – synchron, mit gemeinsamer Warteschlange.</p>
+      <button id="btn-login" class="btn primary big">Mit Spotify anmelden</button>
+      <p class="small muted">Benötigt Spotify Premium. Die Musik läuft direkt hier im Browser.</p>
+      <p id="login-error" class="error hidden"></p>
+    </div>
+  </section>
+
+  <!-- Lobby -->
+  <section id="view-lobby" class="view center hidden">
+    <div class="card hero">
+      <div class="logo"><img src="/icon.svg" alt=""> Songs Together</div>
+      <p class="muted">Hallo <strong id="lobby-name"></strong>!</p>
+      <button id="btn-create" class="btn primary big">Neuen Raum erstellen</button>
+      <div class="divider"><span>oder</span></div>
+      <form id="form-join" class="row">
+        <input id="input-room" placeholder="Raumcode oder Link" autocomplete="off">
+        <button class="btn">Beitreten</button>
+      </form>
+      <button id="btn-logout" class="btn link small">Abmelden</button>
+    </div>
+  </section>
+
+  <!-- Beitreten-Bestätigung (Browser braucht einen Klick, bevor Audio starten darf) -->
+  <section id="view-enter" class="view center hidden">
+    <div class="card hero">
+      <div class="logo"><img src="/icon.svg" alt=""> Songs Together</div>
+      <p class="muted">Raum <strong id="enter-room"></strong></p>
+      <button id="btn-enter" class="btn primary big">Raum betreten</button>
+      <button id="btn-back-lobby" class="btn link small">Zurück</button>
+    </div>
+  </section>
+
+  <!-- Raum -->
+  <section id="view-room" class="view hidden">
+    <header class="topbar">
+      <div class="logo small-logo"><img src="/icon.svg" alt=""> Songs Together</div>
+      <div class="room-info">
+        <span class="muted">Raum</span>
+        <code id="room-code"></code>
+        <button id="btn-copy" class="btn small" title="Einladungslink kopieren">Link kopieren</button>
+      </div>
+      <div class="status">
+        <span id="sync-dot" class="dot" title="Synchronisation"></span>
+        <span id="sync-text" class="small muted">Verbinde…</span>
+      </div>
+      <div id="users" class="users"></div>
+      <button id="btn-leave" class="btn small">Verlassen</button>
+    </header>
+
+    <main class="layout">
+      <!-- Player -->
+      <section class="panel player">
+        <div class="cover-wrap"><img id="np-cover" class="cover" alt="" draggable="false"><div id="np-empty" class="cover placeholder">♪</div></div>
+        <div class="np-meta">
+          <div id="np-title" class="np-title">Nichts läuft</div>
+          <div id="np-artist" class="muted"></div>
+          <div id="np-added" class="small muted"></div>
+        </div>
+
+        <div class="progress">
+          <span id="time-cur" class="time">0:00</span>
+          <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Position">
+          <span id="time-dur" class="time">0:00</span>
+        </div>
+
+        <div class="controls">
+          <button id="btn-prev" class="icon-btn" title="Zurück (Shift+←)" aria-label="Zurück">
+            <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>
+          </button>
+          <button id="btn-play" class="icon-btn play" title="Play/Pause (Leertaste)" aria-label="Play/Pause">
+            <svg id="ic-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <svg id="ic-pause" viewBox="0 0 24 24" class="hidden"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+          </button>
+          <button id="btn-next" class="icon-btn" title="Weiter (Shift+→)" aria-label="Weiter">
+            <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>
+          </button>
+        </div>
+
+        <div class="volume">
+          <button id="btn-mute" class="icon-btn small" aria-label="Stumm">
+            <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9zM16.5 12a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+          </button>
+          <input id="volume" type="range" min="0" max="100" value="60" aria-label="Lautstärke">
+          <span id="volume-val" class="small muted">60%</span>
+        </div>
+        <p class="small muted center-text">Lautstärke gilt nur für dich.</p>
+        <p id="player-error" class="error hidden"></p>
+      </section>
+
+      <!-- Queue -->
+      <section class="panel queue-panel" id="dropzone">
+        <div class="panel-head">
+          <h2>Warteschlange <span id="queue-count" class="muted small"></span></h2>
+          <div class="row tight">
+            <button id="btn-shuffle" class="btn small" title="Mischen">Mischen</button>
+            <button id="btn-clear" class="btn small" title="Leeren">Leeren</button>
+          </div>
+        </div>
+        <div class="drop-hint">
+          Songs, Alben oder Playlists aus Spotify hierher <strong>ziehen</strong> oder Link mit <kbd>Strg</kbd>+<kbd>V</kbd> einfügen
+        </div>
+        <ol id="queue" class="tracklist"></ol>
+        <div id="queue-empty" class="empty muted">Die Warteschlange ist leer.</div>
+      </section>
+
+      <!-- Suche -->
+      <section class="panel search-panel">
+        <div class="panel-head"><h2>Suche</h2></div>
+        <input id="search" type="search" placeholder="Song, Künstler, Album …" autocomplete="off">
+        <ul id="results" class="tracklist"></ul>
+      </section>
+    </main>
+
+    <div id="drop-overlay" class="drop-overlay hidden"><div>Loslassen zum Hinzufügen</div></div>
+  </section>
+
+  <div id="toasts" class="toasts"></div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

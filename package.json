@@ -1,0 +1,17 @@
+{
+  "name": "songs-together",
+  "version": "1.0.0",
+  "description": "Zusammen Spotify hören – synchronisierte Räume mit gemeinsamer Warteschlange",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
