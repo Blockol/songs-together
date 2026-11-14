@@ -131,11 +131,26 @@ def find_spotify():
     return best
 
 
+BROWSERS = {"chrome.exe", "msedge.exe", "brave.exe", "opera.exe", "vivaldi.exe"}
+WS_EX_TOPMOST = 0x0008
+user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+
+
 def find_mini():
-    """Das Mini-Player-Fenster (auch wenn es gerade von uns ausgeblendet ist)."""
-    own = os.getpid()
+    """Das Mini-Player-Fenster (auch wenn es gerade von uns ausgeblendet ist).
+
+    Angepinnt (Document Picture-in-Picture) gibt Chrome dem Fenster den Titel des Haupt-Tabs,
+    z. B. „Songs Together“ – erkennbar ist es daran, dass es immer im Vordergrund liegt.
+    Als normales Popup trägt es den Titel „… Songs Together Mini-Player“.
+    """
     for hwnd in all_windows():
-        if MINI_MARKER in window_title(hwnd) and window_pid(hwnd) != own:
+        title = window_title(hwnd)
+        if "Songs Together" not in title:
+            continue
+        if process_exe(window_pid(hwnd)) not in BROWSERS:
+            continue
+        topmost = bool(user32.GetWindowLongW(hwnd, -20) & WS_EX_TOPMOST)
+        if topmost or MINI_MARKER in title:
             return hwnd
     return None
 
