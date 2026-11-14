@@ -2,20 +2,24 @@
 // Ablauf: Spotify-Login (PKCE) → Raum betreten → Web Playback SDK spielt im Browser,
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
+import { CLIENT_ID } from './config.js';
+import { Net } from './net.js';
+
 const $ = (s) => document.querySelector(s);
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state';
-const REDIRECT_URI = location.origin + '/callback';
+// Basis-Adresse der Seite (lokal: http://127.0.0.1:3000/, GitHub Pages: https://<name>.github.io/songs-together/)
+const BASE = new URL('.', location.href).href;
+const REDIRECT_URI = BASE;
 
 // Sync-Parameter
 const SYNC_INTERVAL_MS = 1000;   // wie oft die eigene Position geprüft wird
 const DRIFT_THRESHOLD_MS = 180;  // ab dieser Abweichung wird nachjustiert
 const SEEK_COOLDOWN_MS = 1200;
 
-let config = { clientId: '' };
 let me = null;          // Spotify-Profil
 let room = null;        // letzter Raumzustand vom Server
 let roomId = null;
-let ws = null;
+let net = null;
 let player = null;
 let deviceId = null;
 let volume = clampNum(Number(localStorage.getItem('volume') ?? 60), 0, 100);
@@ -83,9 +87,9 @@ async function login() {
   const state = randomString(16);
   sessionStorage.setItem('pkce_verifier', verifier);
   sessionStorage.setItem('pkce_state', state);
-  if (!sessionStorage.getItem('returnTo')) sessionStorage.setItem('returnTo', location.pathname);
+  if (!sessionStorage.getItem('returnTo')) sessionStorage.setItem('returnTo', location.search);
   const params = new URLSearchParams({
-    client_id: config.clientId,
+    client_id: CLIENT_ID,
     response_type: 'code',
     redirect_uri: REDIRECT_URI,
     code_challenge_method: 'S256',
@@ -98,9 +102,9 @@ async function login() {
 
 async function handleCallback() {
   const p = new URLSearchParams(location.search);
-  const returnTo = sessionStorage.getItem('returnTo') || '/';
+  const returnTo = sessionStorage.getItem('returnTo') || '';
   sessionStorage.removeItem('returnTo');
-  history.replaceState(null, '', returnTo);
+  history.replaceState(null, '', BASE + returnTo);
   if (p.get('error')) throw new Error('Anmeldung abgebrochen: ' + p.get('error'));
   if (p.get('state') !== sessionStorage.getItem('pkce_state')) throw new Error('Ungültiger Login-Status, bitte erneut versuchen.');
   const res = await fetch('https://accounts.spotify.com/api/token', {
@@ -110,7 +114,7 @@ async function handleCallback() {
       grant_type: 'authorization_code',
       code: p.get('code'),
       redirect_uri: REDIRECT_URI,
-      client_id: config.clientId,
+      client_id: CLIENT_ID,
       code_verifier: sessionStorage.getItem('pkce_verifier') || '',
     }),
   });
@@ -137,7 +141,7 @@ async function getToken(forceRefresh = false) {
     const res = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: config.clientId }),
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: t.refresh_token, client_id: CLIENT_ID }),
     });
     const data = await res.json();
     if (!res.ok) { tokens.clear(); throw new Error('Sitzung abgelaufen, bitte neu anmelden.'); }
@@ -149,7 +153,7 @@ async function getToken(forceRefresh = false) {
 
 function logout() {
   tokens.clear();
-  location.href = '/';
+  location.href = BASE;
 }
 
 // ============================================================ Spotify Web API
@@ -261,58 +265,27 @@ async function addFromText(text, { next = false } = {}) {
 
 // ============================================================ Verbindung + Uhrzeit-Sync
 
-const clock = { offset: 0, rtt: null, samples: [] };
-const serverNow = () => Date.now() + clock.offset;
-let pingTimer = null;
-let reconnectDelay = 500;
+const serverNow = () => (net ? net.serverNow() : Date.now());
 
-function send(msg) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+function send(msg) { net?.send(msg); }
+
+function connect(isNew) {
+  net = new Net({
+    roomId,
+    isNew,
+    user: { name: me.display_name || me.id, image: me.images?.[0]?.url || '' },
+    onMessage: (msg) => {
+      if (msg.type === 'state') onState(msg);
+      else if (msg.type === 'event') toast(msg.text);
+      else if (msg.type === 'error') toast(msg.text, true);
+    },
+    onStatus: (level, text) => setStatus(level, text),
+    onRole: (isHost) => $('#host-badge').classList.toggle('hidden', !isHost),
+  });
+  net.start();
 }
 
-function ping() { send({ type: 'ping', t0: Date.now() }); }
-
-function onPong({ t0, serverTime }) {
-  const t1 = Date.now();
-  const rtt = t1 - t0;
-  clock.samples.push({ rtt, offset: serverTime - (t0 + rtt / 2) });
-  if (clock.samples.length > 12) clock.samples.shift();
-  // Messung mit der kleinsten Laufzeit ist die genaueste
-  const best = clock.samples.reduce((a, b) => (b.rtt < a.rtt ? b : a));
-  clock.offset = best.offset;
-  clock.rtt = best.rtt;
-}
-
-function connect() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
-  setStatus('warn', 'Verbinde…');
-
-  ws.onopen = () => {
-    reconnectDelay = 500;
-    clock.samples = [];
-    send({ type: 'join', room: roomId, user: { id: me.id, name: me.display_name || me.id, image: me.images?.[0]?.url || '' } });
-    for (let i = 0; i < 6; i++) setTimeout(ping, i * 120);
-    clearInterval(pingTimer);
-    pingTimer = setInterval(ping, 10_000);
-  };
-
-  ws.onmessage = (ev) => {
-    const msg = JSON.parse(ev.data);
-    if (msg.type === 'pong') onPong(msg);
-    else if (msg.type === 'state') onState(msg);
-    else if (msg.type === 'event') toast(msg.text);
-    else if (msg.type === 'error') toast(msg.text, true);
-  };
-
-  ws.onclose = () => {
-    clearInterval(pingTimer);
-    if (!roomId) return; // absichtlich verlassen
-    setStatus('bad', 'Verbindung getrennt – neuer Versuch…');
-    setTimeout(() => { if (roomId) connect(); }, reconnectDelay);
-    reconnectDelay = Math.min(reconnectDelay * 2, 8000);
-  };
-}
+window.addEventListener('pagehide', () => net?.stop());
 
 function onState(s) {
   const prevSync = room?.syncId;
@@ -492,7 +465,7 @@ function setStatus(level, text) {
   const dot = $('#sync-dot');
   dot.className = 'dot ' + level;
   $('#sync-text').textContent = text;
-  dot.title = clock.rtt != null ? `Ping zum Server: ${clock.rtt} ms · Seek-Ausgleich: ${Math.round(sync.lead)} ms` : '';
+  dot.title = net?.rtt != null ? `Ping zum Host: ${net.rtt} ms · Seek-Ausgleich: ${Math.round(sync.lead)} ms` : '';
 }
 
 // ============================================================ Rendering
@@ -613,7 +586,7 @@ function bindControls() {
   $('#btn-mute').onclick = () => { muted = !muted; applyVolume(); };
 
   $('#btn-copy').onclick = async () => {
-    const link = `${location.origin}/r/${roomId}`;
+    const link = `${BASE}?room=${roomId}`;
     try { await navigator.clipboard.writeText(link); toast('Einladungslink kopiert'); }
     catch { prompt('Link zum Teilen:', link); }
   };
@@ -791,16 +764,16 @@ function bindSearch() {
 // ============================================================ Räume betreten / verlassen
 
 function roomFromPath() {
-  const m = location.pathname.match(/^\/r\/([a-z0-9-]{3,40})\/?$/i);
-  return m ? m[1].toLowerCase() : null;
+  const id = new URLSearchParams(location.search).get('room') || '';
+  return /^[a-z0-9-]{3,40}$/i.test(id) ? id.toLowerCase() : null;
 }
 
-function goToRoom(id) {
-  history.pushState(null, '', `/r/${id}`);
-  enterRoom(id);
+function goToRoom(id, isNew = false) {
+  history.pushState(null, '', `${BASE}?room=${id}`);
+  enterRoom(id, isNew);
 }
 
-async function enterRoom(id) {
+async function enterRoom(id, isNew = false) {
   roomId = id;
   room = null;
   $('#room-code').textContent = id;
@@ -809,20 +782,22 @@ async function enterRoom(id) {
   // Player im Klick-Kontext erstellen (Autoplay-Regeln der Browser)
   if (window.Spotify) createPlayer();
   else loadSdk().then(createPlayer);
-  connect();
+  connect(isNew);
 }
 
 function leaveRoom() {
   roomId = null;
   room = null;
-  ws?.close();
+  net?.stop();
+  net = null;
+  $('#host-badge').classList.add('hidden');
   player?.disconnect();
   player = null;
   deviceId = null;
   sync.wasActive = false;
   sync.detached = false;
   showPlayerError('');
-  history.pushState(null, '', '/');
+  history.pushState(null, '', BASE);
   showLobby();
 }
 
@@ -834,15 +809,15 @@ function showLobby() {
 function bindLobby() {
   $('#btn-login').onclick = login;
   $('#btn-logout').onclick = logout;
-  $('#btn-create').onclick = () => goToRoom(newRoomId());
+  $('#btn-create').onclick = () => goToRoom(newRoomId(), true);
   $('#form-join').onsubmit = (e) => {
     e.preventDefault();
     const v = $('#input-room').value.trim();
-    const id = (v.match(/\/r\/([a-z0-9-]{3,40})/i)?.[1] || v).toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const id = (v.match(/room=([a-z0-9-]{3,40})/i)?.[1] || v).toLowerCase().replace(/[^a-z0-9-]/g, '');
     if (id.length >= 3) goToRoom(id); else toast('Bitte einen gültigen Raumcode eingeben.', true);
   };
   $('#btn-enter').onclick = () => enterRoom($('#enter-room').textContent);
-  $('#btn-back-lobby').onclick = () => { history.pushState(null, '', '/'); showLobby(); };
+  $('#btn-back-lobby').onclick = () => { history.pushState(null, '', BASE); showLobby(); };
   window.addEventListener('popstate', () => {
     if (roomId) leaveRoom();
     route();
@@ -872,17 +847,17 @@ async function init() {
   bindLobby();
   bindControls();
 
-  config = await fetch('/config').then((r) => r.json());
   const loginError = (text) => { $('#login-error').textContent = text; $('#login-error').classList.remove('hidden'); show('login'); };
 
-  if (!config.clientId) { loginError('Server-Konfiguration fehlt: SPOTIFY_CLIENT_ID ist nicht gesetzt (siehe README).'); return; }
+  if (!CLIENT_ID) { loginError('Konfiguration fehlt: CLIENT_ID in config.js ist nicht gesetzt (siehe README).'); return; }
 
-  if (location.pathname === '/callback') {
+  const q = new URLSearchParams(location.search);
+  if ((q.has('code') || q.has('error')) && q.has('state')) {
     try { await handleCallback(); } catch (e) { loginError(e.message); return; }
   }
 
   if (!tokens.get()) {
-    if (roomFromPath()) sessionStorage.setItem('returnTo', location.pathname);
+    if (roomFromPath()) sessionStorage.setItem('returnTo', location.search);
     show('login');
     return;
   }

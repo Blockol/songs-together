@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Songs Together</title>
-  <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <!-- Login -->
   <section id="view-login" class="view center hidden">
     <div class="card hero">
-      <div class="logo"><img src="/icon.svg" alt=""> Songs Together</div>
+      <div class="logo"><img src="icon.svg" alt=""> Songs Together</div>
       <p class="muted">Gemeinsam Spotify hören – synchron, mit gemeinsamer Warteschlange.</p>
       <button id="btn-login" class="btn primary big">Mit Spotify anmelden</button>
       <p class="small muted">Benötigt Spotify Premium. Die Musik läuft direkt hier im Browser.</p>
@@ -22,7 +22,7 @@
   <!-- Lobby -->
   <section id="view-lobby" class="view center hidden">
     <div class="card hero">
-      <div class="logo"><img src="/icon.svg" alt=""> Songs Together</div>
+      <div class="logo"><img src="icon.svg" alt=""> Songs Together</div>
       <p class="muted">Hallo <strong id="lobby-name"></strong>!</p>
       <button id="btn-create" class="btn primary big">Neuen Raum erstellen</button>
       <div class="divider"><span>oder</span></div>
@@ -37,7 +37,7 @@
   <!-- Beitreten-Bestätigung (Browser braucht einen Klick, bevor Audio starten darf) -->
   <section id="view-enter" class="view center hidden">
     <div class="card hero">
-      <div class="logo"><img src="/icon.svg" alt=""> Songs Together</div>
+      <div class="logo"><img src="icon.svg" alt=""> Songs Together</div>
       <p class="muted">Raum <strong id="enter-room"></strong></p>
       <button id="btn-enter" class="btn primary big">Raum betreten</button>
       <button id="btn-back-lobby" class="btn link small">Zurück</button>
@@ -47,10 +47,11 @@
   <!-- Raum -->
   <section id="view-room" class="view hidden">
     <header class="topbar">
-      <div class="logo small-logo"><img src="/icon.svg" alt=""> Songs Together</div>
+      <div class="logo small-logo"><img src="icon.svg" alt=""> Songs Together</div>
       <div class="room-info">
         <span class="muted">Raum</span>
         <code id="room-code"></code>
+        <span id="host-badge" class="badge hidden" title="Dein Browser verwaltet gerade den Raum. Verlässt du ihn, übernimmt automatisch jemand anderes.">Host</span>
         <button id="btn-copy" class="btn small" title="Einladungslink kopieren">Link kopieren</button>
       </div>
       <div class="status">
@@ -130,6 +131,7 @@
 
   <div id="toasts" class="toasts"></div>
 
-  <script src="/app.js" type="module"></script>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="app.js" type="module"></script>
 </body>
 </html>
