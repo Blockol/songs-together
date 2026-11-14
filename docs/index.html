@@ -5,10 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Songs Together</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
   <script>
     // Design sofort setzen, damit die Seite nicht kurz in Grün aufblitzt
-    try { document.documentElement.dataset.theme = localStorage.getItem('theme') || 'green'; } catch (e) {}
+    try {
+      var theme = localStorage.getItem('theme') || 'green';
+      document.documentElement.dataset.theme = theme;
+      if (theme === 'custom') {
+        var vars = JSON.parse(localStorage.getItem('themeVars') || '{}');
+        for (var k in vars) document.documentElement.style.setProperty(k, vars[k]);
+      }
+    } catch (e) {}
   </script>
 </head>
 <body>
@@ -147,6 +154,16 @@
       <section>
         <h3>Design</h3>
         <div id="themes" class="themes" role="radiogroup" aria-label="Design"></div>
+        <div id="custom-color" class="custom-color hidden">
+          <div id="wheel" class="wheel" title="Farbe wählen"></div>
+          <div class="custom-side">
+            <label for="brightness" class="small muted">Helligkeit</label>
+            <input id="brightness" type="range" min="20" max="100" value="85">
+            <label for="hex" class="small muted">Hex-Code</label>
+            <input id="hex" maxlength="7" spellcheck="false" autocomplete="off">
+            <button class="btn primary small" type="button" tabindex="-1">Vorschau</button>
+          </div>
+        </div>
       </section>
       <p class="small muted">Das Design gilt nur für dich und wird in diesem Browser gespeichert.</p>
     </div>
@@ -155,6 +172,6 @@
   <div id="toasts" class="toasts"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="app.js?v=5" type="module"></script>
+  <script src="app.js?v=6" type="module"></script>
 </body>
 </html>

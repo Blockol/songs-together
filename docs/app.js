@@ -2,8 +2,9 @@
 // Ablauf: Spotify-Login (PKCE) → Raum betreten → Web Playback SDK spielt im Browser,
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
-import { CLIENT_ID } from './config.js?v=5';
-import { Net } from './net.js?v=5';
+import { CLIENT_ID } from './config.js?v=6';
+import { Net } from './net.js?v=6';
+import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=6';
 
 const $ = (s) => document.querySelector(s);
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state';
@@ -846,16 +847,47 @@ const THEMES = [
   { id: 'black', name: 'Schwarz', bg: '#000000', panel: '#181818', accent: '#f2f2f2' },
 ];
 
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* egal */ } },
+};
+
+let customColor = hexToRgb(store.get('customColor')) ? store.get('customColor') : '#ff8a3d';
+let wheel = null;
+
+function applyCustomColor(hex) {
+  customColor = hex;
+  const vars = deriveTheme(hex);
+  for (const [k, v] of Object.entries(vars)) document.documentElement.style.setProperty(k, v);
+  store.set('customColor', hex);
+  store.set('themeVars', JSON.stringify(vars));
+  $('#custom-dot')?.style.setProperty('background', hex);
+  if ($('#hex') && document.activeElement !== $('#hex')) $('#hex').value = hex;
+}
+
+function clearCustomColor() {
+  for (const k of Object.keys(deriveTheme('#000000'))) document.documentElement.style.removeProperty(k);
+}
+
 function setTheme(id) {
-  if (!THEMES.some((t) => t.id === id)) id = 'green';
+  if (id !== 'custom' && !THEMES.some((t) => t.id === id)) id = 'green';
   document.documentElement.dataset.theme = id;
-  try { localStorage.setItem('theme', id); } catch { /* egal */ }
+  store.set('theme', id);
+  if (id === 'custom') applyCustomColor(customColor); else clearCustomColor();
   for (const b of document.querySelectorAll('.theme-opt')) b.setAttribute('aria-checked', String(b.dataset.theme === id));
+  const panel = $('#custom-color');
+  panel.classList.toggle('hidden', id !== 'custom');
+  if (id === 'custom') {
+    wheel ??= new ColorWheel($('#wheel'), (hex) => applyCustomColor(hex));
+    wheel.setHex(customColor);
+    $('#brightness').value = Math.round(wheel.v * 100);
+    setFill($('#brightness'));
+  }
 }
 
 function bindSettings() {
   const modal = $('#settings');
-  $('#themes').replaceChildren(...THEMES.map((t) => {
+  const tiles = THEMES.map((t) => {
     const b = document.createElement('button');
     b.className = 'theme-opt';
     b.type = 'button';
@@ -866,10 +898,38 @@ function bindSettings() {
       <span>${t.name}</span>`;
     b.onclick = () => setTheme(t.id);
     return b;
-  }));
+  });
+  // Eigene Farbe
+  const custom = document.createElement('button');
+  custom.className = 'theme-opt';
+  custom.type = 'button';
+  custom.setAttribute('role', 'radio');
+  custom.dataset.theme = 'custom';
+  custom.innerHTML = `<span class="preview rainbow"><i id="custom-dot" class="dot-big" style="background:${customColor}"></i></span>
+    <span>Eigene Farbe</span>`;
+  custom.onclick = () => setTheme('custom');
+  $('#themes').replaceChildren(...tiles, custom);
+
+  const brightness = $('#brightness');
+  brightness.addEventListener('input', () => { setFill(brightness); wheel?.setBrightness(brightness.value / 100); });
+  $('#hex').addEventListener('input', (e) => {
+    let v = e.target.value.trim();
+    if (!v.startsWith('#')) v = '#' + v;
+    if (hexToRgb(v)) {
+      applyCustomColor(v.toLowerCase());
+      wheel?.setHex(v);
+      brightness.value = Math.round(wheel.v * 100);
+      setFill(brightness);
+    }
+  });
+
   setTheme(document.documentElement.dataset.theme);
 
-  const open = () => { modal.classList.remove('hidden'); modal.querySelector('[aria-checked="true"]')?.focus(); };
+  const open = () => {
+    modal.classList.remove('hidden');
+    if (document.documentElement.dataset.theme === 'custom') setTheme('custom'); // Farbrad zeichnen, sobald sichtbar
+    modal.querySelector('[aria-checked="true"]')?.focus();
+  };
   const close = () => modal.classList.add('hidden');
   for (const b of document.querySelectorAll('[data-open-settings]')) b.onclick = open;
   $('#settings-close').onclick = close;
