@@ -1067,12 +1067,16 @@ function bindSettings() {
 // ============================================================ Mini-Player
 // Kleines Extra-Fenster mit Player, Warteschlange und Drop-Fläche.
 // Angepinnt (Chrome/Edge): Document Picture-in-Picture → bleibt über allen anderen Fenstern.
+// Angepinnt in anderen Browsern (Firefox, Opera …): normales Popup mit Markierung im Titel,
+// „Songs Together Sync“ legt es dann über alle anderen Fenster.
 // Sonst: normales Popup-Fenster. Die Musik läuft weiter im Haupt-Tab, das Mini-Fenster steuert ihn nur.
 
-const PIN_SUPPORTED = 'documentPictureInPicture' in window;
+const PIP_SUPPORTED = 'documentPictureInPicture' in window;
 const miniPinned = () => store.get('miniPin') !== '0';
 let mini = null; // { win, doc, $, seeking }
 const MINI_TITLE = 'Songs Together Mini-Player';
+const PIN_MARK = ' (angepinnt)'; // daran erkennt Sync, dass es das Popup selbst anpinnen soll
+const miniTitle = () => MINI_TITLE + (mini?.pinPopup ? PIN_MARK : '');
 
 const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
 const ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
@@ -1145,8 +1149,9 @@ async function openMini() {
   if (mini) { closeMini(); return; }
   const { W, H, pos } = miniPlacement();
   let win = null;
+  const pinPopup = miniPinned() && !PIP_SUPPORTED;
   try {
-    if (miniPinned() && PIN_SUPPORTED) win = await window.documentPictureInPicture.requestWindow({ width: W, height: H });
+    if (miniPinned() && PIP_SUPPORTED) win = await window.documentPictureInPicture.requestWindow({ width: W, height: H });
     else win = window.open('', 'songs-together-mini', `popup,width=${W},height=${H}${pos}`);
   } catch (e) {
     toast('Mini-Player konnte nicht geöffnet werden: ' + e.message, true);
@@ -1157,7 +1162,7 @@ async function openMini() {
   const doc = win.document;
   doc.head.replaceChildren();
   doc.body.replaceChildren();
-  doc.title = MINI_TITLE; // fester Titel, daran erkennt „Songs Together Sync“ das Fenster
+  doc.title = MINI_TITLE + (pinPopup ? PIN_MARK : ''); // fester Titel, daran erkennt „Songs Together Sync“ das Fenster
   const meta = doc.createElement('meta'); meta.setAttribute('charset', 'utf-8');
   const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('style.css?v=12', location.href).href;
   const icon = doc.createElement('link'); icon.rel = 'icon'; icon.href = $('#favicon').href;
@@ -1167,7 +1172,7 @@ async function openMini() {
   doc.body.innerHTML = MINI_HTML;
 
   const m = (k) => doc.querySelector(`[data-m="${k}"]`);
-  mini = { win, doc, m, seeking: false };
+  mini = { win, doc, m, seeking: false, pinPopup };
   syncMiniTheme();
 
   m('play').onclick = togglePlay;
@@ -1267,7 +1272,7 @@ function renderMini() {
   m('cover').classList.toggle('hidden', !cur?.image);
   m('cover-ph').classList.toggle('hidden', Boolean(cur?.image));
   m('play-icon').innerHTML = room.playing ? ICON_PAUSE : ICON_PLAY;
-  mini.doc.title = cur ? `${cur.name} · ${MINI_TITLE}` : MINI_TITLE;
+  mini.doc.title = cur ? `${cur.name} · ${miniTitle()}` : miniTitle();
   m('queue').replaceChildren(...room.queue.map((t, i) => {
     const li = trackRow(t, { index: i, queue: true });
     li.draggable = false;
@@ -1294,11 +1299,10 @@ function renderMiniProgress() {
 function bindMini() {
   $('#btn-mini').onclick = openMini;
   const pin = $('#mini-pin');
-  pin.checked = PIN_SUPPORTED && miniPinned();
-  pin.disabled = !PIN_SUPPORTED;
-  $('#mini-pin-note').textContent = PIN_SUPPORTED
+  pin.checked = miniPinned();
+  $('#mini-pin-note').textContent = PIP_SUPPORTED
     ? 'Angepinnt bleibt der Mini-Player über allen anderen Fenstern, auch über Spotify. Der Haupt-Tab muss geöffnet bleiben (er darf im Hintergrund sein).'
-    : 'Anpinnen funktioniert nur in Chrome und Edge. In diesem Browser öffnet sich ein normales kleines Fenster.';
+    : 'Angepinnt bleibt der Mini-Player über allen anderen Fenstern – in diesem Browser übernimmt das Songs Together Sync (siehe unten), es muss dafür laufen. Der Haupt-Tab muss geöffnet bleiben (er darf im Hintergrund sein).';
   pin.addEventListener('change', () => {
     store.set('miniPin', pin.checked ? '1' : '0');
     // Offenes Fenster mit neuer Einstellung neu öffnen

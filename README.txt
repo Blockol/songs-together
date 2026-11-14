@@ -96,5 +96,7 @@ MINI-PLAYER
 Im Raum oben rechts (Symbol neben dem Zahnrad) öffnet sich ein kleines Fenster mit Player,
 Warteschlange und einer Fläche, auf die man Songs aus Spotify ziehen kann.
 - "Immer im Vordergrund (anpinnen)" in den Einstellungen: Das Fenster bleibt über allen
-  anderen Apps (nur Chrome und Edge). Ausgeschaltet: normales kleines Fenster.
+  anderen Apps. Chrome und Edge können das selbst; in Firefox, Opera usw. übernimmt das
+  "Songs Together Sync" (muss dafür laufen). Ausgeschaltet: normales kleines Fenster, das mit
+  Songs Together Sync trotzdem immer vor dem Spotify-Fenster bleibt.
 - Die Musik läuft im Haupt-Tab. Der muss offen bleiben, darf aber im Hintergrund sein.

@@ -6,6 +6,9 @@ Koppelt den Mini-Player von Songs Together an die Spotify-App für Windows:
   * Spotify-Fenster wird verschoben -> Mini-Player wandert mit
   * Spotify-Fenster wird größer/kleiner -> Mini-Player skaliert im selben Verhältnis mit
   * Mini-Player neu geöffnet         -> erscheint wieder an derselben Stelle im Spotify-Fenster
+  * Nicht angepinnt                  -> liegt trotzdem immer vor dem Spotify-Fenster
+  * Angepinnt in Firefox/Opera       -> wird über alle anderen Fenster gelegt (dort gibt es kein
+                                        Document Picture-in-Picture)
 
 Läuft unsichtbar im Hintergrund mit einem Symbol im Infobereich der Taskleiste.
 Nur Windows. Nutzt die Windows-API direkt über ctypes.
@@ -26,6 +29,7 @@ from PIL import Image, ImageDraw
 
 APP_NAME = "Songs Together Sync"
 MINI_MARKER = "Songs Together Mini-Player"  # steht im Fenstertitel des Mini-Players
+PIN_MARKER = MINI_MARKER + " (angepinnt)"    # Popup, das wir selbst anpinnen sollen
 SPOTIFY_EXE = "spotify.exe"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "SongsTogetherSync"
@@ -37,7 +41,10 @@ user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 SW_HIDE, SW_SHOWNOACTIVATE = 0, 4
-SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0004, 0x0010
+SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0004, 0x0010
+SWP_NOOWNERZORDER = 0x0200
+HWND_TOP, HWND_TOPMOST = 0, -1
+GW_HWNDPREV = 3
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 ERROR_ALREADY_EXISTS = 183
 
@@ -62,6 +69,7 @@ kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD,
 kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 kernel32.CreateMutexW.restype = wintypes.HANDLE
 
+EVENT_SYSTEM_FOREGROUND = 0x0003
 EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND = 0x0016, 0x0017
 WINEVENT_OUTOFCONTEXT = 0
 WINEVENTPROC = ctypes.WINFUNCTYPE(None, wintypes.HANDLE, wintypes.DWORD, wintypes.HWND,
@@ -144,9 +152,35 @@ def find_spotify():
     return best
 
 
-BROWSERS = {"chrome.exe", "msedge.exe", "brave.exe", "opera.exe", "vivaldi.exe"}
+BROWSERS = {"chrome.exe", "msedge.exe", "brave.exe", "opera.exe", "vivaldi.exe", "firefox.exe"}
 WS_EX_TOPMOST = 0x0008
 user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+
+
+def is_topmost(hwnd):
+    return bool(user32.GetWindowLongW(hwnd, -20) & WS_EX_TOPMOST)
+
+
+def is_below(hwnd, other, limit=2000):
+    """True, wenn hwnd in der Fensterreihenfolge hinter other liegt."""
+    h = hwnd
+    for _ in range(limit):
+        h = user32.GetWindow(h, GW_HWNDPREV)
+        if not h:
+            return False
+        if h == other:
+            return True
+    return False
+
+
+def raise_above(hwnd, other):
+    """hwnd direkt vor other legen, ohne den Fokus zu verändern und ohne andere Fenster zu verdecken."""
+    prev = user32.GetWindow(other, GW_HWNDPREV)
+    # Liegt direkt vor Spotify ein „immer im Vordergrund“-Fenster (oder gar keins), ist Spotify das
+    # oberste normale Fenster -> ganz nach oben (bei den normalen Fenstern).
+    after = prev if prev and prev != hwnd and not is_topmost(prev) else HWND_TOP
+    user32.SetWindowPos(hwnd, after, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER)
 
 
 def find_mini():
@@ -162,8 +196,7 @@ def find_mini():
             continue
         if process_exe(window_pid(hwnd)) not in BROWSERS:
             continue
-        topmost = bool(user32.GetWindowLongW(hwnd, -20) & WS_EX_TOPMOST)
-        if topmost or MINI_MARKER in title:
+        if is_topmost(hwnd) or MINI_MARKER in title:
             return hwnd
     return None
 
@@ -338,6 +371,21 @@ class Sync:
         if self.mini and self.hidden:
             user32.ShowWindow(self.mini, SW_SHOWNOACTIVATE)
             self.hidden = False
+            self.keep_in_front()
+
+    def keep_in_front(self):
+        """Angepinntes Popup (Firefox/Opera) über alle Fenster legen; nicht angepinnten
+        Mini-Player zumindest immer vor dem Spotify-Fenster halten."""
+        if not self.mini or self.hidden:
+            return
+        if is_topmost(self.mini):
+            return  # Document Picture-in-Picture oder schon von uns angepinnt
+        if PIN_MARKER in window_title(self.mini):
+            user32.SetWindowPos(self.mini, HWND_TOPMOST, 0, 0, 0, 0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER)
+            return
+        if self.spotify and not user32.IsIconic(self.spotify) and is_below(self.mini, self.spotify):
+            raise_above(self.mini, self.spotify)
 
     def hide_mini(self):
         if self.mini and not self.hidden:
@@ -450,16 +498,20 @@ class Sync:
             return  # Minimieren läuft gerade (Animation) -> ausgeblendet lassen
         if self.spotify and not user32.IsIconic(self.spotify):
             self.show_mini()
+            self.keep_in_front()
         else:
             self.hide_mini()
 
     def on_win_event(self, event, hwnd):
-        """Windows meldet Beginn/Ende des Minimierens – schneller als jede Abfrage."""
+        """Windows meldet Beginn/Ende des Minimierens und Fensterwechsel – schneller als jede Abfrage."""
         if not self.enabled or not self.mini:
             return
         if hwnd != self.spotify and process_exe(window_pid(hwnd)) != SPOTIFY_EXE:
             return
-        if event == EVENT_SYSTEM_MINIMIZESTART:
+        if event == EVENT_SYSTEM_FOREGROUND:  # Spotify wurde angeklickt -> Mini-Player sofort davor
+            if hwnd == self.spotify:
+                self.keep_in_front()
+        elif event == EVENT_SYSTEM_MINIMIZESTART:
             self.minimizing = True
             self.hide_mini()
         elif event == EVENT_SYSTEM_MINIMIZEEND:
@@ -476,6 +528,8 @@ class Sync:
 
         self._proc = WINEVENTPROC(cb)  # Referenz behalten, sonst räumt Python sie weg
         user32.SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND, None,
+                               self._proc, 0, 0, WINEVENT_OUTOFCONTEXT)
+        user32.SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, None,
                                self._proc, 0, 0, WINEVENT_OUTOFCONTEXT)
         msg = wintypes.MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
