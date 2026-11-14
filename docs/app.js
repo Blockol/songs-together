@@ -2,9 +2,9 @@
 // Ablauf: Spotify-Login (PKCE) → Raum betreten → Web Playback SDK spielt im Browser,
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
-import { CLIENT_ID } from './config.js?v=11';
-import { Net } from './net.js?v=11';
-import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=11';
+import { CLIENT_ID } from './config.js?v=12';
+import { Net } from './net.js?v=12';
+import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=12';
 
 const $ = (s) => document.querySelector(s);
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state';
@@ -1023,6 +1023,7 @@ function bindSettings() {
 const PIN_SUPPORTED = 'documentPictureInPicture' in window;
 const miniPinned = () => store.get('miniPin') !== '0';
 let mini = null; // { win, doc, $, seeking }
+const MINI_TITLE = 'Songs Together Mini-Player';
 
 const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
 const ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
@@ -1080,9 +1081,9 @@ async function openMini() {
   const doc = win.document;
   doc.head.replaceChildren();
   doc.body.replaceChildren();
-  doc.title = 'Songs Together';
+  doc.title = MINI_TITLE; // fester Titel, daran erkennt „Songs Together Sync“ das Fenster
   const meta = doc.createElement('meta'); meta.setAttribute('charset', 'utf-8');
-  const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('style.css?v=11', location.href).href;
+  const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('style.css?v=12', location.href).href;
   const icon = doc.createElement('link'); icon.rel = 'icon'; icon.href = $('#favicon').href;
   doc.head.append(meta, css, icon);
   doc.documentElement.lang = 'de';
@@ -1186,7 +1187,7 @@ function renderMini() {
   m('cover').classList.toggle('hidden', !cur?.image);
   m('cover-ph').classList.toggle('hidden', Boolean(cur?.image));
   m('play-icon').innerHTML = room.playing ? ICON_PAUSE : ICON_PLAY;
-  mini.doc.title = cur ? `${cur.name} · Songs Together` : 'Songs Together';
+  mini.doc.title = cur ? `${cur.name} · ${MINI_TITLE}` : MINI_TITLE;
   m('queue').replaceChildren(...room.queue.map((t, i) => {
     const li = trackRow(t, { index: i, queue: true });
     li.draggable = false;

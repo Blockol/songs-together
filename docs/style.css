@@ -322,3 +322,5 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: none; b
   .mini-body .drop-short { font-size: 0; }
   .mini-body .drop-short b { font-size: 20px; }
 }
+.sync-note { margin: 10px 0 0; }
+.sync-note a { color: var(--accent); }

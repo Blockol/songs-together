@@ -1,1 +1,6 @@
 node_modules/
+sync/build/
+sync/dist/
+sync/.venv/
+*.spec
+__pycache__/

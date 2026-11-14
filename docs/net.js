@@ -6,7 +6,7 @@
 //   startet mit dem letzten bekannten Zustand weiter. Die Musik läuft dabei bei allen einfach weiter.
 // - Uhrzeit-Abgleich: Jeder Teilnehmer misst den Unterschied seiner Uhr zur Uhr des Hosts (wie NTP).
 
-import { HostRoom } from './host-room.js?v=11';
+import { HostRoom } from './host-room.js?v=12';
 
 const PREFIX = 'songs-together-v1-';
 const CONNECT_TIMEOUT_MS = 7000;

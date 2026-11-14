@@ -60,6 +60,24 @@ Tastenkürzel:  Leertaste = Play/Pause
 - Die Leiste oben mit "blockol.github.io" kommt von Chrome und lässt sich nicht entfernen.
 - Der Haupt-Tab muss offen bleiben (darf im Hintergrund sein), dort läuft die Musik.
 
+SONGS TOGETHER SYNC (nur Windows, optional)
+Koppelt den Mini-Player an die Spotify-App für Windows:
+- Spotify im Vordergrund              -> Mini-Player erscheint
+- Spotify minimiert / im Hintergrund  -> Mini-Player verschwindet
+- Spotify-Fenster verschieben         -> Mini-Player wandert mit
+Einrichten:
+1. Herunterladen: Einstellungen (Zahnrad) -> Link "Songs Together Sync", oder direkt
+   https://github.com/Blockol/songs-together/releases/latest/download/SongsTogether-Sync.exe
+2. Doppelklick. Python o. Ä. muss NICHT installiert sein, alles steckt in der Datei.
+   Windows warnt beim ersten Mal ("Der Computer wurde durch Windows geschützt"):
+   -> "Weitere Informationen" -> "Trotzdem ausführen"
+3. Beim ersten Start richtet es sich selbst ein (Ordner %LOCALAPPDATA%\Programs\SongsTogetherSync)
+   und fragt, ob es mit Windows starten soll. Die heruntergeladene Datei kann danach weg.
+4. In Songs Together einmal den Mini-Player öffnen – ab dann blendet Sync ihn ein und aus.
+Symbol unten rechts in der Taskleiste (Rechtsklick): Kopplung an/aus, Mit Windows starten, Beenden.
+Update: über das Symbol beenden, neue Datei herunterladen und starten.
+Selbst bauen: sync\build.bat ausführen (braucht Python), Ergebnis liegt in sync\dist\
+
 
 5. WENN ETWAS NICHT GEHT
 ------------------------
