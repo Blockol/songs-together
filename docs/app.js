@@ -51,6 +51,7 @@ function toast(text, isErr = false) {
 function show(view) {
   for (const v of document.querySelectorAll('.view')) v.classList.add('hidden');
   $('#view-' + view).classList.remove('hidden');
+  $('#gear-float').classList.toggle('hidden', view === 'room');
 }
 
 function randomString(len) {
@@ -613,7 +614,7 @@ function bindControls() {
 
   // Tastatur
   document.addEventListener('keydown', (e) => {
-    if (!roomId || e.target.closest('input, textarea')) return;
+    if (!roomId || e.target.closest('input, textarea') || !$('#settings').classList.contains('hidden')) return;
     if (e.code === 'Space') { e.preventDefault(); document.activeElement?.blur?.(); togglePlay(); }
     else if (e.key === 'ArrowRight' && e.shiftKey) send({ type: 'next' });
     else if (e.key === 'ArrowLeft' && e.shiftKey) send({ type: 'prev' });
@@ -835,6 +836,47 @@ function route() {
   }
 }
 
+// ============================================================ Einstellungen / Design
+
+const THEMES = [
+  { id: 'green', name: 'Grün', bg: '#0b0f0c', panel: '#1d2621', accent: '#1ed760' },
+  { id: 'blue', name: 'Blau', bg: '#0a0e14', panel: '#1b2431', accent: '#3b9dff' },
+  { id: 'pink', name: 'Pink', bg: '#120b0f', panel: '#281a22', accent: '#ff5fa8' },
+  { id: 'purple', name: 'Lila', bg: '#0e0b14', panel: '#221a2f', accent: '#a06bff' },
+  { id: 'black', name: 'Schwarz', bg: '#000000', panel: '#181818', accent: '#f2f2f2' },
+];
+
+function setTheme(id) {
+  if (!THEMES.some((t) => t.id === id)) id = 'green';
+  document.documentElement.dataset.theme = id;
+  try { localStorage.setItem('theme', id); } catch { /* egal */ }
+  for (const b of document.querySelectorAll('.theme-opt')) b.setAttribute('aria-checked', String(b.dataset.theme === id));
+}
+
+function bindSettings() {
+  const modal = $('#settings');
+  $('#themes').replaceChildren(...THEMES.map((t) => {
+    const b = document.createElement('button');
+    b.className = 'theme-opt';
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.dataset.theme = t.id;
+    b.innerHTML = `<span class="preview" style="background:${t.bg}; border:1px solid ${t.panel}">
+        <i style="width:40%; background:${t.accent}"></i><i style="width:25%; background:${t.panel}"></i></span>
+      <span>${t.name}</span>`;
+    b.onclick = () => setTheme(t.id);
+    return b;
+  }));
+  setTheme(document.documentElement.dataset.theme);
+
+  const open = () => { modal.classList.remove('hidden'); modal.querySelector('[aria-checked="true"]')?.focus(); };
+  const close = () => modal.classList.add('hidden');
+  for (const b of document.querySelectorAll('[data-open-settings]')) b.onclick = open;
+  $('#settings-close').onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+}
+
 // ============================================================ Start
 
 async function init() {
@@ -846,6 +888,7 @@ async function init() {
 
   bindLobby();
   bindControls();
+  bindSettings();
 
   const loginError = (text) => { $('#login-error').textContent = text; $('#login-error').classList.remove('hidden'); show('login'); };
 

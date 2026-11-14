@@ -6,6 +6,10 @@
   <title>Songs Together</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Design sofort setzen, damit die Seite nicht kurz in Grün aufblitzt
+    try { document.documentElement.dataset.theme = localStorage.getItem('theme') || 'green'; } catch (e) {}
+  </script>
 </head>
 <body>
   <!-- Login -->
@@ -59,6 +63,7 @@
         <span id="sync-text" class="small muted">Verbinde…</span>
       </div>
       <div id="users" class="users"></div>
+      <button class="icon-btn small gear" data-open-settings title="Einstellungen" aria-label="Einstellungen"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
       <button id="btn-leave" class="btn small">Verlassen</button>
     </header>
 
@@ -128,6 +133,24 @@
 
     <div id="drop-overlay" class="drop-overlay hidden"><div>Loslassen zum Hinzufügen</div></div>
   </section>
+
+  <!-- Zahnrad auf Login-/Lobby-Seiten -->
+  <button id="gear-float" class="icon-btn gear gear-float" data-open-settings title="Einstellungen" aria-label="Einstellungen"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
+
+  <!-- Einstellungen -->
+  <div id="settings" class="modal-backdrop hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-head">
+        <h2 id="settings-title">Einstellungen</h2>
+        <button id="settings-close" class="icon-btn small" aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z"/></svg></button>
+      </div>
+      <section>
+        <h3>Design</h3>
+        <div id="themes" class="themes" role="radiogroup" aria-label="Design"></div>
+      </section>
+      <p class="small muted">Das Design gilt nur für dich und wird in diesem Browser gespeichert.</p>
+    </div>
+  </div>
 
   <div id="toasts" class="toasts"></div>
 
