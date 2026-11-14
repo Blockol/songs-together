@@ -85,3 +85,6 @@ und http://127.0.0.1:3000/ öffnen.
 
 Alles im Ordner docs/ ist die Website. Nach einem Push auf GitHub (Branch main) ist die
 neue Version nach etwa einer Minute online.
+Wichtig: Nach Änderungen die Versionsnummer "?v=..." in docs/index.html, docs/app.js und
+docs/net.js überall um eins erhöhen. Sonst mischt der Browser bis zu 10 Minuten lang alte
+und neue Dateien aus dem Cache.
