@@ -296,6 +296,8 @@ class Sync:
         p = self.saved_pos
         self.scale = (p["rw"], p["rh"]) if "rw" in p and "rh" in p else None
         self.applied_size = None     # Größe, die WIR dem Mini-Player zuletzt gegeben haben
+        self.min_size = (0, 0)       # von Chrome erzwungene Mindestgröße (wird gelernt)
+        self.anchor = None           # Ecke/Abstand, festgehalten während Spotify skaliert wird
 
     def scale_of(self, mini_r, spotify_r):
         """Größe des Mini-Players im Verhältnis zum Spotify-Fenster.
@@ -311,9 +313,26 @@ class Sync:
         self.applied_size = size
         return self.scale
 
-    def set_mini_rect(self, x, y, w, h):
+    def place_mini(self, rel, size, spotify):
+        """Mini-Player in dieser Größe an die gemerkte Ecke des Spotify-Fensters setzen.
+
+        Chrome erzwingt eine Mindestgröße: Ist das Fenster danach größer als verlangt, wird es
+        mit der echten Größe neu ausgerichtet – sonst ragt es über die Ecke hinaus und
+        wandert bei jedem Schritt ein Stück weiter weg."""
+        w, h = max(size[0], self.min_size[0]), max(size[1], self.min_size[1])
+        x, y = place_relative(rel, (w, h), spotify)
+        if not on_some_monitor(x, y, w, h):
+            return
         user32.SetWindowPos(self.mini, None, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE)
-        self.applied_size = tuple(rect(self.mini)[2:])  # Chrome kann eine Mindestgröße erzwingen
+        _, _, aw, ah = rect(self.mini)
+        if (aw, ah) != (w, h):
+            if aw > w or ah > h:  # Mindestgröße von Chrome merken
+                self.min_size = (max(self.min_size[0], aw if aw > w else 0),
+                                 max(self.min_size[1], ah if ah > h else 0))
+            x, y = place_relative(rel, (aw, ah), spotify)
+            user32.SetWindowPos(self.mini, None, x, y, 0, 0,
+                                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+        self.applied_size = (aw, ah)
 
     def show_mini(self):
         if self.mini and self.hidden:
@@ -361,9 +380,7 @@ class Sync:
             sp = rect(self.spotify)
             if self.scale:  # Größe an das jetzige Spotify-Fenster anpassen
                 w, h = scaled_size(self.scale, sp)
-            x, y = place_relative(p, (w, h), sp)
-            if on_some_monitor(x, y, w, h):
-                self.set_mini_rect(x, y, w, h)
+            self.place_mini(p, (w, h), sp)
             return
         elif "x" in p:
             x, y = p["x"], p["y"]
@@ -400,6 +417,8 @@ class Sync:
             return
         cur = rect(self.spotify)
         prev, self.last_rect = self.last_rect, cur
+        if not prev or not self.mini or cur[2:] == prev[2:]:
+            self.anchor = None  # Skalieren ist vorbei -> beim nächsten Mal Lage neu bestimmen
         if not prev or not self.mini or cur == prev:
             return
         dx, dy = cur[0] - prev[0], cur[1] - prev[1]
@@ -411,10 +430,11 @@ class Sync:
         if self.hidden or user32.IsIconic(self.mini):
             return
         # Größe geändert (auch Maximieren): gleiche Ecke, gleicher Abstand, gleiches Größenverhältnis
-        rel = relative_to(mr, prev)
-        w, h = scaled_size(self.scale_of(mr, prev), cur)
-        x, y = place_relative(rel, (w, h), cur)
-        self.set_mini_rect(x, y, w, h)
+        # Die Lage wird zu Beginn einmal bestimmt und bleibt während des Skalierens fest,
+        # damit sich keine Abweichungen von Schritt zu Schritt aufaddieren.
+        if self.anchor is None:
+            self.anchor = relative_to(mr, prev)
+        self.place_mini(self.anchor, scaled_size(self.scale_of(mr, prev), cur), cur)
 
     def tick(self):
         now = time.monotonic()
