@@ -560,7 +560,7 @@ function renderRoom() {
   $('#np-empty').classList.toggle('hidden', Boolean(cur?.image));
   $('#ic-play').classList.toggle('hidden', room.playing);
   $('#ic-pause').classList.toggle('hidden', !room.playing);
-  document.title = cur ? `${cur.name} · Songs Together` : 'Songs Together';
+  setMainTitle();
 
   const list = $('#queue');
   list.replaceChildren(...room.queue.map((t, i) => trackRow(t, { index: i, queue: true })));
@@ -1077,6 +1077,15 @@ let mini = null; // { win, doc, $, seeking }
 const MINI_TITLE = 'Songs Together Mini-Player';
 const PIN_MARK = ' (angepinnt)'; // daran erkennt Sync, dass es das Popup selbst anpinnen soll
 const miniTitle = () => MINI_TITLE + (mini?.pinPopup ? PIN_MARK : '');
+// Nicht angepinnter Picture-in-Picture-Player (Chrome/Edge): Chrome gibt dem Fenster den Titel des
+// Haupt-Tabs. Ein unsichtbares Zeichen darin sagt „Songs Together Sync“, dass es ihn nicht über allen
+// Fenstern lassen soll, sondern nur vor Spotify.
+const UNPIN_MARK = '⁠';
+
+function setMainTitle() {
+  const cur = room?.current;
+  document.title = (cur ? `${cur.name} · Songs Together` : 'Songs Together') + (mini?.pipUnpinned ? UNPIN_MARK : '');
+}
 
 const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
 const ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
@@ -1164,14 +1173,18 @@ async function openMini() {
   if (mini) { closeMini(); return; }
   const { W, H, pos } = miniPlacement();
   let win = null;
-  let pinPopup = miniPinned() && !PIP_SUPPORTED;
+  const pinned = miniPinned();
+  let pinPopup = pinned && !PIP_SUPPORTED;
+  let pip = false;
   try {
-    if (miniPinned() && PIP_SUPPORTED) {
+    if (PIP_SUPPORTED) {
+      // Chrome/Edge: immer der echte Picture-in-Picture-Player (ohne Adresszeile).
       // Manche Browser (z. B. Opera) kennen die Funktion, öffnen aber kein Fenster →
-      // dann normales Popup, das „Songs Together Sync“ anpinnt
+      // dann normales Popup (angepinnt übernimmt das „Songs Together Sync“)
       try { win = await window.documentPictureInPicture.requestWindow({ width: W, height: H }); }
       catch (e) { console.warn('Picture-in-Picture nicht möglich:', e); win = null; }
-      if (!win?.document?.body) { win = null; pinPopup = true; }
+      if (win?.document?.body) pip = true;
+      else { win = null; pinPopup = pinned; }
     }
     if (!win) {
       // Echte Seite statt leerem Fenster: in der Adresszeile steht dann die Website statt „about:blank“
@@ -1197,7 +1210,8 @@ async function openMini() {
   doc.body.innerHTML = MINI_HTML;
 
   const m = (k) => doc.querySelector(`[data-m="${k}"]`);
-  mini = { win, doc, m, seeking: false, pinPopup };
+  mini = { win, doc, m, seeking: false, pinPopup, pipUnpinned: pip && !pinned };
+  setMainTitle();
   syncMiniTheme();
 
   m('play').onclick = togglePlay;
@@ -1266,6 +1280,7 @@ async function openMini() {
 function miniClosed() {
   clearInterval(mini?.watch);
   mini = null;
+  setMainTitle();
   $('#btn-mini').classList.remove('active');
   $('#btn-mini').title = 'Mini-Player öffnen';
 }
@@ -1326,7 +1341,7 @@ function bindMini() {
   const pin = $('#mini-pin');
   pin.checked = miniPinned();
   $('#mini-pin-note').textContent = PIP_SUPPORTED
-    ? 'Angepinnt bleibt der Mini-Player über allen anderen Fenstern, auch über Spotify. Der Haupt-Tab muss geöffnet bleiben (er darf im Hintergrund sein).'
+    ? 'Angepinnt bleibt der Mini-Player über allen anderen Fenstern, auch über Spotify. Nicht angepinnt bleibt er nur vor Spotify – dafür muss Songs Together Sync laufen (siehe unten), sonst bleibt er trotzdem über allen Fenstern. Der Haupt-Tab muss geöffnet bleiben (er darf im Hintergrund sein).'
     : 'Angepinnt bleibt der Mini-Player über allen anderen Fenstern – in diesem Browser übernimmt das Songs Together Sync (siehe unten), es muss dafür laufen. Der Haupt-Tab muss geöffnet bleiben (er darf im Hintergrund sein).';
   pin.addEventListener('change', () => {
     store.set('miniPin', pin.checked ? '1' : '0');

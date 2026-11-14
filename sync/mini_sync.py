@@ -9,6 +9,8 @@ Koppelt den Mini-Player von Songs Together an die Spotify-App für Windows:
   * Nicht angepinnt                  -> liegt trotzdem immer vor dem Spotify-Fenster
   * Angepinnt in Firefox/Opera       -> wird über alle anderen Fenster gelegt (dort gibt es kein
                                         Document Picture-in-Picture)
+  * Nicht angepinnt in Chrome/Edge   -> der Picture-in-Picture-Player liegt nicht mehr über allem,
+                                        sondern nur vor Spotify
 
 Läuft unsichtbar im Hintergrund mit einem Symbol im Infobereich der Taskleiste.
 Nur Windows. Nutzt die Windows-API direkt über ctypes.
@@ -30,6 +32,7 @@ from PIL import Image, ImageDraw
 APP_NAME = "Songs Together Sync"
 MINI_MARKER = "Songs Together Mini-Player"  # steht im Fenstertitel des Mini-Players
 PIN_MARKER = MINI_MARKER + " (angepinnt)"    # Popup, das wir selbst anpinnen sollen
+UNPIN_MARKER = "⁠"  # unsichtbar im Titel: Picture-in-Picture-Player soll NICHT über allem liegen
 SPOTIFY_EXE = "spotify.exe"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "SongsTogetherSync"
@@ -43,7 +46,7 @@ kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 SW_HIDE, SW_SHOWNOACTIVATE = 0, 4
 SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0004, 0x0010
 SWP_NOOWNERZORDER = 0x0200
-HWND_TOP, HWND_TOPMOST = 0, -1
+HWND_TOP, HWND_TOPMOST, HWND_NOTOPMOST = 0, -1, -2
 GW_HWNDPREV = 3
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 ERROR_ALREADY_EXISTS = 183
@@ -378,11 +381,16 @@ class Sync:
         Mini-Player zumindest immer vor dem Spotify-Fenster halten."""
         if not self.mini or self.hidden:
             return
+        title = window_title(self.mini)
+        flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER
         if is_topmost(self.mini):
-            return  # Document Picture-in-Picture oder schon von uns angepinnt
-        if PIN_MARKER in window_title(self.mini):
-            user32.SetWindowPos(self.mini, HWND_TOPMOST, 0, 0, 0, 0,
-                                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER)
+            if UNPIN_MARKER not in title:
+                return  # angepinnt: Document Picture-in-Picture oder schon von uns angepinnt
+            # Picture-in-Picture, aber nicht angepinnt -> „immer im Vordergrund“ wegnehmen
+            # (Chrome setzt es manchmal neu, deshalb bei jedem Durchlauf prüfen)
+            user32.SetWindowPos(self.mini, HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+        elif PIN_MARKER in title:
+            user32.SetWindowPos(self.mini, HWND_TOPMOST, 0, 0, 0, 0, flags)
             return
         if self.spotify and not user32.IsIconic(self.spotify) and is_below(self.mini, self.spotify):
             raise_above(self.mini, self.spotify)
