@@ -3,7 +3,7 @@
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
 import { CLIENT_ID } from './config.js?v=12';
-import { Net } from './net.js?v=12';
+import { Net } from './net.js?v=13';
 import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=12';
 
 const $ = (s) => document.querySelector(s);
@@ -259,7 +259,53 @@ async function resolveLinks(links) {
   return out.slice(0, MAX_RESOLVE);
 }
 
+// ------------------------------------------------ Sitzung sichern (Song + Warteschlange)
+const BACKUP_PREFIX = 'SongsTogether-Sitzung:';
+
+function backupText() {
+  const slim = (t) => t && ({ uri: t.uri, name: t.name, artists: t.artists, album: t.album, image: t.image, durationMs: t.durationMs, addedBy: t.addedBy });
+  return BACKUP_PREFIX + JSON.stringify({
+    v: 1,
+    current: slim(room.current),
+    positionMs: Math.round(expectedPos()),
+    playing: room.playing,
+    queue: room.queue.map(slim),
+    history: (room.history || []).map(slim),
+  });
+}
+
+function parseBackup(text) {
+  const i = text.indexOf(BACKUP_PREFIX);
+  if (i < 0) return null;
+  try { return JSON.parse(text.slice(i + BACKUP_PREFIX.length).trim()); } catch { return null; }
+}
+
+async function copyBackup() {
+  if (!room || (!room.current && !room.queue.length)) { toast('Es gibt nichts zu sichern.', true); return; }
+  const text = backupText();
+  try { await navigator.clipboard.writeText(text); toast('Song und Warteschlange kopiert – nach dem Neuladen wieder einfügen'); }
+  catch { prompt('Kopiere diesen Text:', text); }
+}
+
+function restoreBackup(backup) {
+  if (!backup || (!backup.current && !backup.queue?.length)) { toast('Die Sicherung ist leer oder ungültig.', true); return; }
+  if ((room?.current || room?.queue.length) && !confirm('Aktuellen Song und Warteschlange durch die Sicherung ersetzen?')) return;
+  send({ type: 'restore', backup });
+}
+
+async function pasteBackup() {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch {}
+  if (!parseBackup(text)) text = prompt('Gesicherte Sitzung hier einfügen:') || '';
+  if (!text) return;
+  const backup = parseBackup(text);
+  if (!backup) { toast('Keine gültige Sicherung gefunden.', true); return; }
+  restoreBackup(backup);
+}
+
 async function addFromText(text, { next = false } = {}) {
+  const backup = parseBackup(text);
+  if (backup) { restoreBackup(backup); return; }
   const links = parseLinks(text);
   if (!links.length) { toast('Kein Spotify-Song-, Album- oder Playlist-Link erkannt.', true); return; }
   try {
@@ -1005,11 +1051,14 @@ function bindSettings() {
 
   const open = () => {
     modal.classList.remove('hidden');
+    $('#session-backup').classList.toggle('hidden', !roomId);
     if (document.documentElement.dataset.theme === 'custom') setTheme('custom'); // Farbrad zeichnen, sobald sichtbar
     modal.querySelector('[aria-checked="true"]')?.focus();
   };
   const close = () => modal.classList.add('hidden');
   for (const b of document.querySelectorAll('[data-open-settings]')) b.onclick = open;
+  $('#btn-backup-copy').onclick = copyBackup;
+  $('#btn-backup-paste').onclick = () => { close(); pasteBackup(); };
   $('#settings-close').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });

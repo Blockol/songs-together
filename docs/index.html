@@ -169,6 +169,14 @@
         </div>
       </section>
       <p class="small muted">Das Design gilt nur für dich und wird in diesem Browser gespeichert.</p>
+      <section id="session-backup" class="hidden">
+        <h3>Sitzung sichern</h3>
+        <div class="row tight">
+          <button id="btn-backup-copy" class="btn small" type="button">Song &amp; Warteschlange kopieren</button>
+          <button id="btn-backup-paste" class="btn small" type="button">Einfügen</button>
+        </div>
+        <p class="small muted sync-note">Vor dem Neuladen kopieren, danach wieder einfügen – der Song läuft an derselben Stelle weiter. Einfügen geht auch mit <kbd>Strg</kbd>+<kbd>V</kbd> im Raum.</p>
+      </section>
       <section>
         <h3>Mini-Player</h3>
         <label class="switch-row">
@@ -185,6 +193,6 @@
   <div id="toasts" class="toasts"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="app.js?v=13" type="module"></script>
+  <script src="app.js?v=14" type="module"></script>
 </body>
 </html>

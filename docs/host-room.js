@@ -225,6 +225,21 @@ export class HostRoom {
         this.goBack();
         this.broadcastState();
         return;
+      case 'restore': {
+        // Gesicherte Sitzung (aktueller Song + Position + Warteschlange) wiederherstellen
+        const b = msg.backup && typeof msg.backup === 'object' ? msg.backup : {};
+        const fresh = (t) => cleanTrack({ ...t, uid: undefined });
+        const current = fresh(b.current);
+        const queue = (Array.isArray(b.queue) ? b.queue : []).slice(0, MAX_QUEUE).map(fresh).filter(Boolean);
+        if (!current && !queue.length) return;
+        this.history = (Array.isArray(b.history) ? b.history : []).slice(-MAX_HISTORY).map(fresh).filter(Boolean);
+        this.current = current || queue.shift();
+        this.queue = queue;
+        this.setPlayback(current ? Number(b.positionMs) || 0 : 0, b.playing !== false);
+        this.broadcastState();
+        this.notify(`${who} hat die Sitzung wiederhergestellt`);
+        return;
+      }
     }
   }
 }
