@@ -151,7 +151,11 @@ export class HostRoom {
         const space = Math.max(0, MAX_QUEUE - this.queue.length);
         const tracks = list.slice(0, space).map((t) => cleanTrack({ ...t, uid: undefined }, who)).filter(Boolean);
         if (!tracks.length) return;
-        if (msg.next) this.queue.unshift(...tracks); else this.queue.push(...tracks);
+        // before: vor diesem Song einfügen (per Drag & Drop zwischen zwei Songs abgelegt)
+        const at = typeof msg.before === 'string' ? this.queue.findIndex((t) => t.uid === msg.before) : -1;
+        if (at >= 0) this.queue.splice(at, 0, ...tracks);
+        else if (msg.next) this.queue.unshift(...tracks);
+        else this.queue.push(...tracks);
         if (!this.current) this.advance();
         this.broadcastState();
         this.notify(tracks.length === 1

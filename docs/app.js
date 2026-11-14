@@ -3,7 +3,7 @@
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
 import { CLIENT_ID } from './config.js?v=12';
-import { Net } from './net.js?v=13';
+import { Net } from './net.js?v=14';
 import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=12';
 
 const $ = (s) => document.querySelector(s);
@@ -303,7 +303,7 @@ async function pasteBackup() {
   restoreBackup(backup);
 }
 
-async function addFromText(text, { next = false } = {}) {
+async function addFromText(text, { next = false, before } = {}) {
   const backup = parseBackup(text);
   if (backup) { restoreBackup(backup); return; }
   const links = parseLinks(text);
@@ -312,7 +312,8 @@ async function addFromText(text, { next = false } = {}) {
     if (links.length > 1 || links[0].type !== 'track') toast('Songs werden geladen…');
     const tracks = await resolveLinks(links);
     if (!tracks.length) { toast('Keine abspielbaren Songs gefunden.', true); return; }
-    send({ type: 'add', tracks, next });
+    // before: uid des Songs, vor dem eingefügt wird (null = ans Ende)
+    send(before !== undefined ? { type: 'add', tracks, before } : { type: 'add', tracks, next });
   } catch (e) {
     toast('Konnte nicht hinzufügen: ' + e.message, true);
   }
@@ -724,10 +725,11 @@ function bindDragAndDrop() {
     depth = 0;
     overlay.classList.add('hidden');
     const dt = e.dataTransfer;
+    const before = queueDropBefore($('#queue'), e); // über der Warteschlange: genau dort einfügen
     // Erste Datenquelle verwenden, die Spotify-Links enthält (sonst doppelte Einträge)
     for (const type of ['text/uri-list', 'text/plain', 'URL', 'text/x-moz-url']) {
       const text = dt.getData(type);
-      if (parseLinks(text).length) { addFromText(text); return; }
+      if (parseLinks(text).length) { addFromText(text, { before }); return; }
     }
     toast('Kein Spotify-Link im gezogenen Element gefunden.', true);
   });
@@ -743,17 +745,36 @@ function bindDragAndDrop() {
     e.dataTransfer.effectAllowed = 'copy';
   });
 
-  // Queue intern umsortieren
-  bindQueueReorder($('#queue'));
+  // Queue intern umsortieren; von außen gezogene Songs zwischen zwei Songs einfügen
+  const hint = overlay.querySelector('div');
+  bindQueueReorder($('#queue'), (over) => { hint.textContent = over ? 'Loslassen zum Einfügen an dieser Stelle' : 'Loslassen zum Hinzufügen'; });
 
   zone.addEventListener('dragover', (e) => { if (isExternal(e)) zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', () => zone.classList.remove('drag-over'));
 }
 
-// Warteschlange per Drag & Drop umsortieren (Hauptseite und Mini-Player)
-function bindQueueReorder(list) {
+// Song in der Warteschlange unter dem Mauszeiger: { li, after } (after = untere Hälfte)
+function queueDropTarget(list, e) {
+  const li = e.target.closest?.('.track');
+  if (!li || !list.contains(li)) return null;
+  const r = li.getBoundingClientRect();
+  return { li, after: e.clientY >= r.top + r.height / 2 };
+}
+
+// Von außen gezogene Songs: uid des Songs, vor dem eingefügt wird (null = ans Ende,
+// undefined = nicht über der Warteschlange → wie bisher ans Ende)
+function queueDropBefore(list, e) {
+  const t = queueDropTarget(list, e);
+  if (!t) return undefined;
+  return t.after ? (t.li.nextElementSibling?.dataset.uid ?? null) : t.li.dataset.uid;
+}
+
+// Warteschlange per Drag & Drop umsortieren (Hauptseite und Mini-Player). Beim Reinziehen von
+// außen zeigt ein Strich, wo die Songs landen (eingefügt wird im Drop-Handler des Dokuments).
+function bindQueueReorder(list, onExternalOver = () => {}) {
   const isInternal = (e) => e.dataTransfer?.types.includes(INTERNAL);
+  const isExternal = (e) => !isInternal(e) && e.dataTransfer?.types.some((t) => t === 'text/plain' || t === 'text/uri-list' || t === 'URL');
   let dragUid = null;
   const clearMarks = () => list.querySelectorAll('.drop-before, .drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
 
@@ -771,18 +792,22 @@ function bindQueueReorder(list) {
     dragUid = null;
   });
   list.addEventListener('dragover', (e) => {
-    if (!isInternal(e)) return;
+    const internal = isInternal(e);
+    if (!internal && !isExternal(e)) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const li = e.target.closest('.track');
+    e.dataTransfer.dropEffect = internal ? 'move' : 'copy';
+    const t = queueDropTarget(list, e);
     clearMarks();
-    if (!li) return;
-    const r = li.getBoundingClientRect();
-    li.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-before' : 'drop-after');
+    if (!internal) onExternalOver(Boolean(t));
+    if (t) t.li.classList.add(t.after ? 'drop-after' : 'drop-before');
   });
-  list.addEventListener('dragleave', (e) => { if (!list.contains(e.relatedTarget)) clearMarks(); });
+  list.addEventListener('dragleave', (e) => {
+    if (list.contains(e.relatedTarget)) return;
+    clearMarks();
+    onExternalOver(false);
+  });
   list.addEventListener('drop', (e) => {
-    if (!isInternal(e)) return;
+    if (!isInternal(e)) { clearMarks(); onExternalOver(false); return; }
     e.preventDefault();
     const li = e.target.closest('.track');
     const uid = e.dataTransfer.getData(INTERNAL) || dragUid;
@@ -1256,9 +1281,10 @@ async function openMini() {
     doc.body.classList.remove('drag-over');
     if (!isExt(e)) return;
     e.preventDefault();
+    const before = queueDropBefore(m('queue'), e); // über der Warteschlange: genau dort einfügen
     for (const type of ['text/uri-list', 'text/plain', 'URL']) {
       const text = e.dataTransfer.getData(type);
-      if (parseLinks(text).length) { addFromText(text); return; }
+      if (parseLinks(text).length) { addFromText(text, { before }); return; }
     }
     toast('Kein Spotify-Link im gezogenen Element gefunden.', true);
   });
