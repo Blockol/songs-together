@@ -1072,6 +1072,9 @@ function bindSettings() {
 // Sonst: normales Popup-Fenster. Die Musik läuft weiter im Haupt-Tab, das Mini-Fenster steuert ihn nur.
 
 const PIP_SUPPORTED = 'documentPictureInPicture' in window;
+// Opera zeigt im Popup die Adresszeile – mit einer echten Seite steht dort die Website statt „about:blank“
+const IS_OPERA = /OPR\//.test(navigator.userAgent)
+  || Boolean(navigator.userAgentData?.brands?.some((b) => /opera/i.test(b.brand)));
 const miniPinned = () => store.get('miniPin') !== '0';
 let mini = null; // { win, doc, $, seeking }
 const MINI_TITLE = 'Songs Together Mini-Player';
@@ -1145,6 +1148,21 @@ function miniPlacement() {
   return { W, H, pos };
 }
 
+// Wartet, bis mini.html im Popup fertig geladen ist (vorher steht dort kurz about:blank)
+function miniPageLoaded(win) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const check = () => {
+      let ready = false;
+      try { ready = win.location.pathname.endsWith('/mini.html') && win.document.readyState === 'complete'; }
+      catch { /* Seite wechselt gerade */ }
+      if (ready || win.closed || Date.now() - start > 5000) resolve();
+      else setTimeout(check, 30);
+    };
+    check();
+  });
+}
+
 async function openMini() {
   if (mini) { closeMini(); return; }
   const { W, H, pos } = miniPlacement();
@@ -1158,7 +1176,10 @@ async function openMini() {
       catch (e) { console.warn('Picture-in-Picture nicht möglich:', e); win = null; }
       if (!win?.document?.body) { win = null; pinPopup = true; }
     }
-    if (!win) win = window.open('', 'songs-together-mini', `popup,width=${W},height=${H}${pos}`);
+    if (!win) {
+      win = window.open(IS_OPERA ? 'mini.html' : '', 'songs-together-mini', `popup,width=${W},height=${H}${pos}`);
+      if (win && IS_OPERA) await miniPageLoaded(win);
+    }
   } catch (e) {
     toast('Mini-Player konnte nicht geöffnet werden: ' + e.message, true);
     return;
