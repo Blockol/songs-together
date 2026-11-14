@@ -294,7 +294,7 @@ function connect(isNew) {
   net.start();
 }
 
-window.addEventListener('pagehide', () => net?.stop());
+window.addEventListener('pagehide', () => { if (mini) saveMiniRect(mini.win); net?.stop(); });
 
 function onState(s) {
   const prevSync = room?.syncId;
@@ -1065,13 +1065,40 @@ const MINI_HTML = `
   </div>
   <div class="toasts mini-toasts" data-m="toasts"></div>`;
 
+// Letzte Position/Größe des Mini-Players (bleibt auch nach dem Schließen der Website erhalten)
+function loadMiniRect() {
+  try {
+    const r = JSON.parse(store.get('miniRect'));
+    if (r && [r.x, r.y, r.w, r.h].every(Number.isFinite)) return r;
+  } catch { /* egal */ }
+  return null;
+}
+
+function saveMiniRect(win) {
+  try {
+    if (!win || win.closed || !win.innerWidth || !win.innerHeight) return;
+    const r = { x: win.screenX, y: win.screenY, w: win.innerWidth, h: win.innerHeight };
+    const prev = loadMiniRect();
+    if (prev && prev.x === r.x && prev.y === r.y && prev.w === r.w && prev.h === r.h) return;
+    store.set('miniRect', JSON.stringify(r));
+  } catch { /* egal */ }
+}
+
+function miniPlacement() {
+  const r = loadMiniRect();
+  const W = clampNum(r?.w ?? 360, 200, 1200), H = clampNum(r?.h ?? 600, 150, 1600);
+  // Liegt die Position außerhalb aller Bildschirme, schiebt der Browser das Fenster selbst zurück
+  const pos = r ? `,left=${Math.round(r.x)},top=${Math.round(r.y)}` : '';
+  return { W, H, pos };
+}
+
 async function openMini() {
   if (mini) { closeMini(); return; }
-  const W = 360, H = 600;
+  const { W, H, pos } = miniPlacement();
   let win = null;
   try {
     if (miniPinned() && PIN_SUPPORTED) win = await window.documentPictureInPicture.requestWindow({ width: W, height: H });
-    else win = window.open('', 'songs-together-mini', `popup,width=${W},height=${H}`);
+    else win = window.open('', 'songs-together-mini', `popup,width=${W},height=${H}${pos}`);
   } catch (e) {
     toast('Mini-Player konnte nicht geöffnet werden: ' + e.message, true);
     return;
@@ -1146,8 +1173,11 @@ async function openMini() {
     else if (e.key === 'ArrowLeft') seekBy(-10_000);
   });
 
-  win.addEventListener('pagehide', () => { if (mini?.win === win) miniClosed(); });
-  mini.watch = setInterval(() => { if (win.closed && mini?.win === win) miniClosed(); }, 1000);
+  win.addEventListener('pagehide', () => { saveMiniRect(win); if (mini?.win === win) miniClosed(); });
+  mini.watch = setInterval(() => {
+    if (win.closed) { if (mini?.win === win) miniClosed(); return; }
+    saveMiniRect(win);
+  }, 1000);
   $('#btn-mini').classList.add('active');
   $('#btn-mini').title = 'Mini-Player schließen';
   applyVolume();
@@ -1164,6 +1194,7 @@ function miniClosed() {
 function closeMini() {
   if (!mini) return;
   const { win } = mini;
+  saveMiniRect(win);
   miniClosed();
   try { win.close(); } catch { /* egal */ }
 }

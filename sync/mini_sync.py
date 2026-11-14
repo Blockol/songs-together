@@ -4,12 +4,14 @@ Koppelt den Mini-Player von Songs Together an die Spotify-App für Windows:
   * Spotify-Fenster offen            -> Mini-Player ist sichtbar (egal welches Fenster im Fokus ist)
   * Spotify minimiert / geschlossen  -> Mini-Player wird sofort ausgeblendet
   * Spotify-Fenster wird verschoben -> Mini-Player wandert mit
+  * Mini-Player neu geöffnet         -> erscheint wieder dort, wo er zuletzt war
 
 Läuft unsichtbar im Hintergrund mit einem Symbol im Infobereich der Taskleiste.
 Nur Windows. Nutzt die Windows-API direkt über ctypes.
 """
 
 import ctypes
+import json
 import os
 import sys
 import threading
@@ -51,6 +53,8 @@ user32.IsIconic.argtypes = [wintypes.HWND]
 user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
 user32.GetWindow.restype = wintypes.HWND
 user32.GetForegroundWindow.restype = wintypes.HWND
+user32.MonitorFromRect.argtypes = [ctypes.POINTER(wintypes.RECT), wintypes.DWORD]
+user32.MonitorFromRect.restype = wintypes.HANDLE
 kernel32.OpenProcess.restype = wintypes.HANDLE
 kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
 kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
@@ -162,6 +166,39 @@ def find_mini():
     return None
 
 
+def on_some_monitor(x, y, w, h):
+    """True, wenn die Titelleiste des Fensters an dieser Stelle auf einem Bildschirm läge."""
+    r = wintypes.RECT(x, y, x + w, y + 30)
+    return bool(user32.MonitorFromRect(ctypes.byref(r), 0))  # MONITOR_DEFAULTTONULL
+
+
+# ------------------------------------------------------------------ Gemerkte Position
+
+def _data_dir():
+    return os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "Programs", "SongsTogetherSync")
+
+
+POSITION_FILE = os.path.join(_data_dir(), "position.json")
+
+
+def load_position():
+    try:
+        with open(POSITION_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        return int(d["x"]), int(d["y"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def save_position(pos):
+    try:
+        os.makedirs(os.path.dirname(POSITION_FILE), exist_ok=True)
+        with open(POSITION_FILE, "w", encoding="utf-8") as f:
+            json.dump({"x": pos[0], "y": pos[1]}, f)
+    except OSError:
+        pass
+
+
 # ------------------------------------------------------------------ Autostart
 
 def exe_command():
@@ -202,6 +239,10 @@ class Sync:
         self.last_rect = None        # letzte Position/Größe von Spotify
         self.minimizing = False
         self.next_scan = 0.0
+        self.first_scan = True       # beim Programmstart schon offene Mini-Player nicht verschieben
+        self.saved_pos = load_position()
+        self.pending_pos = None      # zuletzt beobachtete, noch nicht gespeicherte Position
+        self.pending_since = 0.0
 
     def show_mini(self):
         if self.mini and self.hidden:
@@ -236,6 +277,33 @@ class Sync:
             if not self.mini:
                 self.mini = find_mini()
                 self.hidden = bool(self.mini) and not user32.IsWindowVisible(self.mini)
+                if self.mini and not self.first_scan:
+                    self.restore_position()
+            self.first_scan = False
+
+    def restore_position(self):
+        """Neu geöffneten Mini-Player dorthin setzen, wo er zuletzt war."""
+        if not self.saved_pos:
+            return
+        x, y = self.saved_pos
+        _, _, w, h = rect(self.mini)
+        if on_some_monitor(x, y, w, h):
+            user32.SetWindowPos(self.mini, None, x, y, 0, 0,
+                                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+
+    def remember_position(self, now):
+        """Position des Mini-Players speichern, sobald sie sich eine Sekunde nicht mehr ändert."""
+        if user32.IsIconic(self.mini):
+            return
+        pos = rect(self.mini)[:2]
+        if pos == self.saved_pos:
+            self.pending_pos = None
+            return
+        if pos != self.pending_pos:
+            self.pending_pos, self.pending_since = pos, now
+        elif now - self.pending_since >= 1.0:
+            self.saved_pos, self.pending_pos = pos, None
+            save_position(pos)
 
     def follow_spotify(self):
         """Verschiebt den Mini-Player um dieselbe Strecke wie das Spotify-Fenster."""
@@ -258,6 +326,7 @@ class Sync:
         if not self.mini:
             return
         self.follow_spotify()
+        self.remember_position(now)
 
         if self.minimizing and self.spotify and user32.IsIconic(self.spotify):
             self.minimizing = False
@@ -328,7 +397,7 @@ def make_icon():
 # damit sie auch dann weiterläuft, wenn die heruntergeladene Datei gelöscht wird.
 # Eine neuere heruntergeladene Version ersetzt dabei die alte (= Update).
 
-INSTALL_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "Programs", "SongsTogetherSync")
+INSTALL_DIR = _data_dir()
 INSTALL_EXE = os.path.join(INSTALL_DIR, "SongsTogether-Sync.exe")
 FIRST_RUN_MARKER = os.path.join(INSTALL_DIR, "eingerichtet.txt")
 MB_YESNO, MB_ICONQUESTION, MB_ICONINFO, IDYES = 0x04, 0x20, 0x40, 6
