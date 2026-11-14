@@ -91,9 +91,9 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: none; b
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 32px; }
 .hero { width: min(420px, 100%); display: grid; gap: 16px; text-align: center; }
 .logo { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 26px; font-weight: 700; }
-.logo img { width: 36px; height: 36px; }
+.logo .logo-icon { width: 36px; height: 36px; flex: none; }
 .small-logo { font-size: 17px; justify-content: flex-start; }
-.small-logo img { width: 26px; height: 26px; }
+.small-logo .logo-icon { width: 26px; height: 26px; }
 .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
@@ -235,3 +235,8 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: none; b
 .custom-side #hex { font-family: ui-monospace, Consolas, monospace; text-transform: lowercase; }
 .custom-side .btn { justify-self: start; margin-top: 4px; pointer-events: none; }
 .modal { max-height: calc(100vh - 32px); overflow: auto; }
+
+/* ---------- Logo in Designfarbe */
+.logo-icon .li-bg { fill: var(--accent); transition: fill .2s; }
+.logo-icon .li-fg { fill: var(--on-accent); }
+.logo-icon .li-stroke { stroke: var(--on-accent); }

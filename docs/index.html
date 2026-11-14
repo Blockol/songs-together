@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Songs Together</title>
-  <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link id="favicon" rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=7">
   <script>
     // Design sofort setzen, damit die Seite nicht kurz in Grün aufblitzt
     try {
@@ -22,7 +22,7 @@
   <!-- Login -->
   <section id="view-login" class="view center hidden">
     <div class="card hero">
-      <div class="logo"><img src="icon.svg" alt=""> Songs Together</div>
+      <div class="logo"><svg class="logo-icon" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" class="li-bg"/><circle cx="24" cy="40" r="7" class="li-fg"/><circle cx="42" cy="36" r="7" class="li-fg"/><path d="M29 40V18l20-5v23" fill="none" class="li-stroke" stroke-width="4" stroke-linejoin="round"/></svg> Songs Together</div>
       <p class="muted">Gemeinsam Spotify hören – synchron, mit gemeinsamer Warteschlange.</p>
       <button id="btn-login" class="btn primary big">Mit Spotify anmelden</button>
       <p class="small muted">Benötigt Spotify Premium. Die Musik läuft direkt hier im Browser.</p>
@@ -33,7 +33,7 @@
   <!-- Lobby -->
   <section id="view-lobby" class="view center hidden">
     <div class="card hero">
-      <div class="logo"><img src="icon.svg" alt=""> Songs Together</div>
+      <div class="logo"><svg class="logo-icon" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" class="li-bg"/><circle cx="24" cy="40" r="7" class="li-fg"/><circle cx="42" cy="36" r="7" class="li-fg"/><path d="M29 40V18l20-5v23" fill="none" class="li-stroke" stroke-width="4" stroke-linejoin="round"/></svg> Songs Together</div>
       <p class="muted">Hallo <strong id="lobby-name"></strong>!</p>
       <button id="btn-create" class="btn primary big">Neuen Raum erstellen</button>
       <div class="divider"><span>oder</span></div>
@@ -48,7 +48,7 @@
   <!-- Beitreten-Bestätigung (Browser braucht einen Klick, bevor Audio starten darf) -->
   <section id="view-enter" class="view center hidden">
     <div class="card hero">
-      <div class="logo"><img src="icon.svg" alt=""> Songs Together</div>
+      <div class="logo"><svg class="logo-icon" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" class="li-bg"/><circle cx="24" cy="40" r="7" class="li-fg"/><circle cx="42" cy="36" r="7" class="li-fg"/><path d="M29 40V18l20-5v23" fill="none" class="li-stroke" stroke-width="4" stroke-linejoin="round"/></svg> Songs Together</div>
       <p class="muted">Raum <strong id="enter-room"></strong></p>
       <button id="btn-enter" class="btn primary big">Raum betreten</button>
       <button id="btn-back-lobby" class="btn link small">Zurück</button>
@@ -58,7 +58,7 @@
   <!-- Raum -->
   <section id="view-room" class="view hidden">
     <header class="topbar">
-      <div class="logo small-logo"><img src="icon.svg" alt=""> Songs Together</div>
+      <div class="logo small-logo"><svg class="logo-icon" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" class="li-bg"/><circle cx="24" cy="40" r="7" class="li-fg"/><circle cx="42" cy="36" r="7" class="li-fg"/><path d="M29 40V18l20-5v23" fill="none" class="li-stroke" stroke-width="4" stroke-linejoin="round"/></svg> Songs Together</div>
       <div class="room-info">
         <span class="muted">Raum</span>
         <code id="room-code"></code>
@@ -172,6 +172,6 @@
   <div id="toasts" class="toasts"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="app.js?v=6" type="module"></script>
+  <script src="app.js?v=7" type="module"></script>
 </body>
 </html>

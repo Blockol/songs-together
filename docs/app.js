@@ -2,9 +2,9 @@
 // Ablauf: Spotify-Login (PKCE) → Raum betreten → Web Playback SDK spielt im Browser,
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
-import { CLIENT_ID } from './config.js?v=6';
-import { Net } from './net.js?v=6';
-import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=6';
+import { CLIENT_ID } from './config.js?v=7';
+import { Net } from './net.js?v=7';
+import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=7';
 
 const $ = (s) => document.querySelector(s);
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state';
@@ -862,11 +862,23 @@ function applyCustomColor(hex) {
   store.set('customColor', hex);
   store.set('themeVars', JSON.stringify(vars));
   $('#custom-dot')?.style.setProperty('background', hex);
+  updateFavicon();
   if ($('#hex') && document.activeElement !== $('#hex')) $('#hex').value = hex;
 }
 
 function clearCustomColor() {
   for (const k of Object.keys(deriveTheme('#000000'))) document.documentElement.style.removeProperty(k);
+}
+
+// Tab-Symbol (Favicon) in der aktuellen Designfarbe
+function updateFavicon() {
+  const css = getComputedStyle(document.documentElement);
+  const accent = css.getPropertyValue('--accent').trim() || '#1ed760';
+  const ink = css.getPropertyValue('--on-accent').trim() || '#04140a';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="${accent}"/>`
+    + `<circle cx="24" cy="40" r="7" fill="${ink}"/><circle cx="42" cy="36" r="7" fill="${ink}"/>`
+    + `<path d="M29 40V18l20-5v23" fill="none" stroke="${ink}" stroke-width="4" stroke-linejoin="round"/></svg>`;
+  $('#favicon').href = 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 
 function setTheme(id) {
@@ -875,6 +887,7 @@ function setTheme(id) {
   store.set('theme', id);
   if (id === 'custom') applyCustomColor(customColor); else clearCustomColor();
   for (const b of document.querySelectorAll('.theme-opt')) b.setAttribute('aria-checked', String(b.dataset.theme === id));
+  updateFavicon();
   const panel = $('#custom-color');
   panel.classList.toggle('hidden', id !== 'custom');
   if (id === 'custom') {
