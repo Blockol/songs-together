@@ -2,9 +2,9 @@
 // Ablauf: Spotify-Login (PKCE) → Raum betreten → Web Playback SDK spielt im Browser,
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
-import { CLIENT_ID } from './config.js?v=9';
-import { Net } from './net.js?v=9';
-import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=9';
+import { CLIENT_ID } from './config.js?v=10';
+import { Net } from './net.js?v=10';
+import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=10';
 
 const $ = (s) => document.querySelector(s);
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state';
@@ -858,6 +858,7 @@ const THEMES = [
   { id: 'pink', name: 'Pink', bg: '#120b0f', panel: '#281a22', accent: '#ff5fa8' },
   { id: 'purple', name: 'Lila', bg: '#0e0b14', panel: '#221a2f', accent: '#a06bff' },
   { id: 'black', name: 'Schwarz', bg: '#000000', panel: '#181818', accent: '#f2f2f2' },
+  { id: 'spotify', name: 'Spotify', bg: '#121212', panel: '#2a2a2a', accent: '#1ed760' },
 ];
 
 const store = {
@@ -1082,7 +1083,7 @@ async function openMini() {
   doc.body.replaceChildren();
   doc.title = 'Songs Together';
   const meta = doc.createElement('meta'); meta.setAttribute('charset', 'utf-8');
-  const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('style.css?v=9', location.href).href;
+  const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('style.css?v=10', location.href).href;
   const icon = doc.createElement('link'); icon.rel = 'icon'; icon.href = $('#favicon').href;
   doc.head.append(meta, css, icon);
   doc.documentElement.lang = 'de';
