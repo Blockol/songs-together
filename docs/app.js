@@ -2,9 +2,9 @@
 // Ablauf: Spotify-Login (PKCE) → Raum betreten → Web Playback SDK spielt im Browser,
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
-import { CLIENT_ID } from './config.js?v=7';
-import { Net } from './net.js?v=7';
-import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=7';
+import { CLIENT_ID } from './config.js?v=8';
+import { Net } from './net.js?v=8';
+import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=8';
 
 const $ = (s) => document.querySelector(s);
 const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state';
@@ -47,6 +47,13 @@ function toast(text, isErr = false) {
   $('#toasts').append(el);
   setTimeout(() => el.remove(), 3500);
   while ($('#toasts').children.length > 4) $('#toasts').firstChild.remove();
+  const box = mini?.m('toasts');
+  if (box) {
+    const copy = mini.doc.importNode(el, true);
+    box.append(copy);
+    setTimeout(() => copy.remove(), 3500);
+    while (box.children.length > 3) box.firstChild.remove();
+  }
 }
 
 function show(view) {
@@ -523,6 +530,7 @@ function renderRoom() {
     return a;
   }));
   renderProgress();
+  renderMini();
 }
 
 let seeking = false;
@@ -536,6 +544,7 @@ function renderProgress() {
     $('#seek').value = dur ? Math.round((pos / dur) * 1000) : 0;
     setFill($('#seek'));
   }
+  renderMiniProgress();
 }
 setInterval(renderProgress, 250);
 
@@ -558,7 +567,17 @@ function applyVolume() {
   $('#volume').value = volume;
   $('#volume-val').textContent = muted ? 'stumm' : volume + '%';
   setFill($('#volume'));
+  if (mini) { mini.m('vol').value = volume; setFill(mini.m('vol')); }
   player?.setVolume(v / 100).catch?.(() => {});
+}
+
+function onQueueAction(e) {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const uid = btn.closest('.track').dataset.uid;
+  if (btn.dataset.act === 'remove') send({ type: 'remove', uid });
+  if (btn.dataset.act === 'playNow') send({ type: 'playNow', uid });
+  if (btn.dataset.act === 'top') send({ type: 'move', uid, to: 0 });
 }
 
 function bindControls() {
@@ -595,14 +614,7 @@ function bindControls() {
   $('#btn-leave').onclick = leaveRoom;
 
   // Queue-Aktionen
-  $('#queue').addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-act]');
-    if (!btn) return;
-    const uid = btn.closest('.track').dataset.uid;
-    if (btn.dataset.act === 'remove') send({ type: 'remove', uid });
-    if (btn.dataset.act === 'playNow') send({ type: 'playNow', uid });
-    if (btn.dataset.act === 'top') send({ type: 'move', uid, to: 0 });
-  });
+  $('#queue').addEventListener('click', onQueueAction);
 
   // Suchergebnis-Aktionen
   $('#results').addEventListener('click', (e) => {
@@ -788,6 +800,7 @@ async function enterRoom(id, isNew = false) {
 }
 
 function leaveRoom() {
+  closeMini();
   roomId = null;
   room = null;
   net?.stop();
@@ -879,6 +892,7 @@ function updateFavicon() {
     + `<circle cx="24" cy="40" r="7" fill="${ink}"/><circle cx="42" cy="36" r="7" fill="${ink}"/>`
     + `<path d="M29 40V18l20-5v23" fill="none" stroke="${ink}" stroke-width="4" stroke-linejoin="round"/></svg>`;
   $('#favicon').href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+  syncMiniTheme();
 }
 
 function setTheme(id) {
@@ -950,6 +964,213 @@ function bindSettings() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 }
 
+// ============================================================ Mini-Player
+// Kleines Extra-Fenster mit Player, Warteschlange und Drop-Fläche.
+// Angepinnt (Chrome/Edge): Document Picture-in-Picture → bleibt über allen anderen Fenstern.
+// Sonst: normales Popup-Fenster. Die Musik läuft weiter im Haupt-Tab, das Mini-Fenster steuert ihn nur.
+
+const PIN_SUPPORTED = 'documentPictureInPicture' in window;
+const miniPinned = () => store.get('miniPin') !== '0';
+let mini = null; // { win, doc, $, seeking }
+
+const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
+const ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+
+const MINI_HTML = `
+  <div class="mini">
+    <div class="mini-now">
+      <img class="mini-cover hidden" data-m="cover" alt="" draggable="false">
+      <div class="mini-cover" data-m="cover-ph">♪</div>
+      <div class="mini-meta">
+        <div class="mini-title" data-m="title">Nichts läuft</div>
+        <div class="mini-artist" data-m="artist"></div>
+      </div>
+    </div>
+    <div class="progress">
+      <span class="time" data-m="cur">0:00</span>
+      <input type="range" min="0" max="1000" value="0" data-m="seek" aria-label="Position">
+      <span class="time" data-m="dur">0:00</span>
+    </div>
+    <div class="mini-controls">
+      <span></span>
+      <div class="buttons">
+        <button class="icon-btn small" data-m="prev" aria-label="Zurück"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+        <button class="icon-btn play" data-m="play" aria-label="Play/Pause"><svg viewBox="0 0 24 24" data-m="play-icon">${ICON_PLAY}</svg></button>
+        <button class="icon-btn small" data-m="next" aria-label="Weiter"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+      </div>
+      <div class="mini-vol">
+        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9zM16.5 12a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+        <input type="range" min="0" max="100" data-m="vol" aria-label="Lautstärke">
+      </div>
+    </div>
+    <div class="mini-drop">Songs, Alben oder Playlists aus Spotify <strong>hierher ziehen</strong><br>oder Link mit Strg+V einfügen</div>
+    <div class="mini-head" data-m="qhead">Als Nächstes</div>
+    <ol class="tracklist mini-queue" data-m="queue"></ol>
+    <div class="empty muted" data-m="qempty">Die Warteschlange ist leer.</div>
+  </div>
+  <div class="toasts mini-toasts" data-m="toasts"></div>`;
+
+async function openMini() {
+  if (mini) { closeMini(); return; }
+  const W = 360, H = 600;
+  let win = null;
+  try {
+    if (miniPinned() && PIN_SUPPORTED) win = await window.documentPictureInPicture.requestWindow({ width: W, height: H });
+    else win = window.open('', 'songs-together-mini', `popup,width=${W},height=${H}`);
+  } catch (e) {
+    toast('Mini-Player konnte nicht geöffnet werden: ' + e.message, true);
+    return;
+  }
+  if (!win) { toast('Das Fenster wurde blockiert – bitte Popups für diese Seite erlauben.', true); return; }
+
+  const doc = win.document;
+  doc.head.replaceChildren();
+  doc.body.replaceChildren();
+  doc.title = 'Songs Together';
+  const meta = doc.createElement('meta'); meta.setAttribute('charset', 'utf-8');
+  const css = doc.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('style.css?v=8', location.href).href;
+  const icon = doc.createElement('link'); icon.rel = 'icon'; icon.href = $('#favicon').href;
+  doc.head.append(meta, css, icon);
+  doc.documentElement.lang = 'de';
+  doc.body.className = 'mini-body';
+  doc.body.innerHTML = MINI_HTML;
+
+  const m = (k) => doc.querySelector(`[data-m="${k}"]`);
+  mini = { win, doc, m, seeking: false };
+  syncMiniTheme();
+
+  m('play').onclick = togglePlay;
+  m('prev').onclick = () => send({ type: 'prev' });
+  m('next').onclick = () => send({ type: 'next' });
+  const seek = m('seek');
+  seek.addEventListener('input', () => {
+    mini.seeking = true;
+    setFill(seek);
+    m('cur').textContent = fmt((seek.value / 1000) * (room?.current?.durationMs || 0));
+  });
+  seek.addEventListener('change', () => {
+    mini.seeking = false;
+    if (room?.current) send({ type: 'seek', positionMs: Math.round((seek.value / 1000) * room.current.durationMs) });
+  });
+  m('vol').addEventListener('input', (e) => {
+    volume = Number(e.target.value);
+    muted = false;
+    store.set('volume', String(volume));
+    applyVolume();
+  });
+  m('queue').addEventListener('click', onQueueAction);
+
+  // Songs reinziehen (z. B. aus der Spotify-App)
+  let depth = 0;
+  const isExt = (e) => !e.dataTransfer?.types.includes(INTERNAL)
+    && e.dataTransfer?.types.some((t) => t === 'text/plain' || t === 'text/uri-list' || t === 'URL');
+  doc.addEventListener('dragenter', (e) => { if (isExt(e)) { depth++; doc.body.classList.add('drag-over'); } });
+  doc.addEventListener('dragleave', (e) => { if (isExt(e) && --depth <= 0) { depth = 0; doc.body.classList.remove('drag-over'); } });
+  doc.addEventListener('dragover', (e) => { if (isExt(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  doc.addEventListener('drop', (e) => {
+    depth = 0;
+    doc.body.classList.remove('drag-over');
+    if (!isExt(e)) return;
+    e.preventDefault();
+    for (const type of ['text/uri-list', 'text/plain', 'URL']) {
+      const text = e.dataTransfer.getData(type);
+      if (parseLinks(text).length) { addFromText(text); return; }
+    }
+    toast('Kein Spotify-Link im gezogenen Element gefunden.', true);
+  });
+  doc.addEventListener('paste', (e) => {
+    const text = e.clipboardData?.getData('text');
+    if (text) { e.preventDefault(); addFromText(text); }
+  });
+  doc.addEventListener('keydown', (e) => {
+    if (e.target.closest?.('input')) return;
+    if (e.code === 'Space') { e.preventDefault(); doc.activeElement?.blur?.(); togglePlay(); }
+    else if (e.key === 'ArrowRight' && e.shiftKey) send({ type: 'next' });
+    else if (e.key === 'ArrowLeft' && e.shiftKey) send({ type: 'prev' });
+    else if (e.key === 'ArrowRight') seekBy(10_000);
+    else if (e.key === 'ArrowLeft') seekBy(-10_000);
+  });
+
+  win.addEventListener('pagehide', () => { if (mini?.win === win) miniClosed(); });
+  mini.watch = setInterval(() => { if (win.closed && mini?.win === win) miniClosed(); }, 1000);
+  $('#btn-mini').classList.add('active');
+  $('#btn-mini').title = 'Mini-Player schließen';
+  applyVolume();
+  renderMini();
+}
+
+function miniClosed() {
+  clearInterval(mini?.watch);
+  mini = null;
+  $('#btn-mini').classList.remove('active');
+  $('#btn-mini').title = 'Mini-Player öffnen';
+}
+
+function closeMini() {
+  if (!mini) return;
+  const { win } = mini;
+  miniClosed();
+  try { win.close(); } catch { /* egal */ }
+}
+
+function syncMiniTheme() {
+  if (!mini) return;
+  const root = mini.doc.documentElement;
+  root.dataset.theme = document.documentElement.dataset.theme;
+  root.setAttribute('style', document.documentElement.getAttribute('style') || '');
+  const icon = mini.doc.querySelector('link[rel=icon]');
+  if (icon) icon.href = $('#favicon').href;
+}
+
+function renderMini() {
+  if (!mini || !room) return;
+  const { m } = mini;
+  const cur = room.current;
+  m('title').textContent = cur ? cur.name : 'Nichts läuft';
+  m('artist').textContent = cur ? cur.artists : 'Füge Songs hinzu';
+  m('cover').src = cur?.image || '';
+  m('cover').classList.toggle('hidden', !cur?.image);
+  m('cover-ph').classList.toggle('hidden', Boolean(cur?.image));
+  m('play-icon').innerHTML = room.playing ? ICON_PAUSE : ICON_PLAY;
+  mini.doc.title = cur ? `${cur.name} · Songs Together` : 'Songs Together';
+  m('queue').replaceChildren(...room.queue.map((t, i) => {
+    const li = trackRow(t, { index: i, queue: true });
+    li.draggable = false;
+    return mini.doc.importNode(li, true);
+  }));
+  m('qempty').classList.toggle('hidden', room.queue.length > 0);
+  m('qhead').textContent = room.queue.length ? `Als Nächstes (${room.queue.length})` : 'Als Nächstes';
+  renderMiniProgress();
+}
+
+function renderMiniProgress() {
+  if (!mini || !room) return;
+  const { m } = mini;
+  const dur = room.current?.durationMs || 0;
+  const pos = expectedPos();
+  m('dur').textContent = fmt(dur);
+  if (!mini.seeking) {
+    m('cur').textContent = fmt(pos);
+    m('seek').value = dur ? Math.round((pos / dur) * 1000) : 0;
+    setFill(m('seek'));
+  }
+}
+
+function bindMini() {
+  $('#btn-mini').onclick = openMini;
+  const pin = $('#mini-pin');
+  pin.checked = PIN_SUPPORTED && miniPinned();
+  pin.disabled = !PIN_SUPPORTED;
+  $('#mini-pin-note').textContent = PIN_SUPPORTED
+    ? 'Angepinnt bleibt der Mini-Player über allen anderen Fenstern, auch über Spotify. Der Haupt-Tab muss geöffnet bleiben (er darf im Hintergrund sein).'
+    : 'Anpinnen funktioniert nur in Chrome und Edge. In diesem Browser öffnet sich ein normales kleines Fenster.';
+  pin.addEventListener('change', () => {
+    store.set('miniPin', pin.checked ? '1' : '0');
+    // Offenes Fenster mit neuer Einstellung neu öffnen
+    if (mini) { closeMini(); openMini(); }
+  });
+}
+
 // ============================================================ Start
 
 async function init() {
@@ -962,6 +1183,7 @@ async function init() {
   bindLobby();
   bindControls();
   bindSettings();
+  bindMini();
 
   const loginError = (text) => { $('#login-error').textContent = text; $('#login-error').classList.remove('hidden'); show('login'); };
 

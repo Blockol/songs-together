@@ -88,3 +88,13 @@ neue Version nach etwa einer Minute online.
 Wichtig: Nach Änderungen die Versionsnummer "?v=..." in docs/index.html, docs/app.js und
 docs/net.js überall um eins erhöhen. Sonst mischt der Browser bis zu 10 Minuten lang alte
 und neue Dateien aus dem Cache.
+
+
+MINI-PLAYER
+-----------
+
+Im Raum oben rechts (Symbol neben dem Zahnrad) öffnet sich ein kleines Fenster mit Player,
+Warteschlange und einer Fläche, auf die man Songs aus Spotify ziehen kann.
+- "Immer im Vordergrund (anpinnen)" in den Einstellungen: Das Fenster bleibt über allen
+  anderen Apps (nur Chrome und Edge). Ausgeschaltet: normales kleines Fenster.
+- Die Musik läuft im Haupt-Tab. Der muss offen bleiben, darf aber im Hintergrund sein.

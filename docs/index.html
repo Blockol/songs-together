@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Songs Together</title>
   <link id="favicon" rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
   <script>
     // Design sofort setzen, damit die Seite nicht kurz in Grün aufblitzt
     try {
@@ -70,6 +70,7 @@
         <span id="sync-text" class="small muted">Verbinde…</span>
       </div>
       <div id="users" class="users"></div>
+      <button id="btn-mini" class="icon-btn small" title="Mini-Player öffnen" aria-label="Mini-Player öffnen"><svg viewBox="0 0 24 24"><path d="M19 11h-8v6h8zm4 8V5c0-1.1-.9-2-2-2H3a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h18a2 2 0 0 0 2-2zm-2 0H3V5h18z"/></svg></button>
       <button class="icon-btn small gear" data-open-settings title="Einstellungen" aria-label="Einstellungen"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
       <button id="btn-leave" class="btn small">Verlassen</button>
     </header>
@@ -166,12 +167,21 @@
         </div>
       </section>
       <p class="small muted">Das Design gilt nur für dich und wird in diesem Browser gespeichert.</p>
+      <section>
+        <h3>Mini-Player</h3>
+        <label class="switch-row">
+          <input type="checkbox" id="mini-pin">
+          <span class="switch" aria-hidden="true"></span>
+          <span>Immer im Vordergrund (anpinnen)</span>
+        </label>
+        <p id="mini-pin-note" class="small muted"></p>
+      </section>
     </div>
   </div>
 
   <div id="toasts" class="toasts"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="app.js?v=7" type="module"></script>
+  <script src="app.js?v=8" type="module"></script>
 </body>
 </html>
