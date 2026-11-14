@@ -1,8 +1,8 @@
 """Songs Together Sync
 
 Koppelt den Mini-Player von Songs Together an die Spotify-App für Windows:
-  * Spotify im Vordergrund          -> Mini-Player wird eingeblendet
-  * Spotify minimiert / anderes App -> Mini-Player wird ausgeblendet
+  * Spotify-Fenster offen            -> Mini-Player ist sichtbar (egal welches Fenster im Fokus ist)
+  * Spotify minimiert / geschlossen  -> Mini-Player wird sofort ausgeblendet
   * Spotify-Fenster wird verschoben -> Mini-Player wandert mit
 
 Läuft unsichtbar im Hintergrund mit einem Symbol im Infobereich der Taskleiste.
@@ -27,8 +27,7 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "SongsTogetherSync"
 
 TICK = 0.02          # Sekunden zwischen zwei Prüfungen (flüssiges Mitwandern)
-RESCAN = 1.0         # Sekunden zwischen zwei Fenstersuchen, solange etwas fehlt
-HIDE_DELAY = 0.35    # kurz warten, bevor ausgeblendet wird (Taskleiste, Alt+Tab …)
+RESCAN = 0.5         # Sekunden zwischen zwei Fenstersuchen, solange etwas fehlt
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -56,6 +55,14 @@ kernel32.OpenProcess.restype = wintypes.HANDLE
 kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
 kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 kernel32.CreateMutexW.restype = wintypes.HANDLE
+
+EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND = 0x0016, 0x0017
+WINEVENT_OUTOFCONTEXT = 0
+WINEVENTPROC = ctypes.WINFUNCTYPE(None, wintypes.HANDLE, wintypes.DWORD, wintypes.HWND,
+                                  wintypes.LONG, wintypes.LONG, wintypes.DWORD, wintypes.DWORD)
+user32.SetWinEventHook.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.HMODULE, WINEVENTPROC,
+                                   wintypes.DWORD, wintypes.DWORD, wintypes.DWORD]
+user32.SetWinEventHook.restype = wintypes.HANDLE
 
 
 # ------------------------------------------------------------------ Windows-Helfer
@@ -193,7 +200,7 @@ class Sync:
         self.mini = None
         self.hidden = False          # haben WIR den Mini-Player ausgeblendet?
         self.last_rect = None        # letzte Position/Größe von Spotify
-        self.away_since = None
+        self.minimizing = False
         self.next_scan = 0.0
 
     def show_mini(self):
@@ -252,16 +259,43 @@ class Sync:
             return
         self.follow_spotify()
 
-        fg = user32.GetForegroundWindow()
-        fg_exe = process_exe(window_pid(fg)) if fg else ""
-        spotify_front = bool(self.spotify) and not user32.IsIconic(self.spotify) and fg_exe == SPOTIFY_EXE
-        if spotify_front or fg == self.mini:
-            self.away_since = None
+        if self.minimizing and self.spotify and user32.IsIconic(self.spotify):
+            self.minimizing = False
+        if self.minimizing:
+            return  # Minimieren läuft gerade (Animation) -> ausgeblendet lassen
+        if self.spotify and not user32.IsIconic(self.spotify):
             self.show_mini()
         else:
-            self.away_since = self.away_since or now
-            if now - self.away_since >= HIDE_DELAY:
-                self.hide_mini()
+            self.hide_mini()
+
+    def on_win_event(self, event, hwnd):
+        """Windows meldet Beginn/Ende des Minimierens – schneller als jede Abfrage."""
+        if not self.enabled or not self.mini:
+            return
+        if hwnd != self.spotify and process_exe(window_pid(hwnd)) != SPOTIFY_EXE:
+            return
+        if event == EVENT_SYSTEM_MINIMIZESTART:
+            self.minimizing = True
+            self.hide_mini()
+        elif event == EVENT_SYSTEM_MINIMIZEEND:
+            self.minimizing = False
+            self.show_mini()
+
+    def watch_events(self):
+        """Eigener Thread: Windows-Ereignisse (Minimieren) empfangen."""
+        def cb(_hook, event, hwnd, _obj, _child, _thread, _time):
+            try:
+                self.on_win_event(event, hwnd)
+            except Exception:
+                pass
+
+        self._proc = WINEVENTPROC(cb)  # Referenz behalten, sonst räumt Python sie weg
+        user32.SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND, None,
+                               self._proc, 0, 0, WINEVENT_OUTOFCONTEXT)
+        msg = wintypes.MSG()
+        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
 
     def loop(self):
         while self.running:
@@ -326,8 +360,8 @@ def first_run_setup():
         return
     answer = message(
         "Songs Together Sync ist eingerichtet.\n\n"
-        "Es blendet den Mini-Player von Songs Together automatisch ein, sobald die Spotify-App "
-        "im Vordergrund ist, und lässt ihn mit dem Spotify-Fenster mitwandern.\n\n"
+        "Es zeigt den Mini-Player von Songs Together, solange die Spotify-App offen ist, blendet ihn "
+        "beim Minimieren von Spotify aus und lässt ihn mit dem Spotify-Fenster mitwandern.\n\n"
         "Soll es automatisch mit Windows starten? (Empfohlen – lässt sich später über das "
         "Symbol unten rechts in der Taskleiste ändern.)",
         MB_YESNO | MB_ICONQUESTION)
@@ -364,6 +398,7 @@ def main():
     sync = Sync()
     worker = threading.Thread(target=sync.loop, daemon=True)
     worker.start()
+    threading.Thread(target=sync.watch_events, daemon=True).start()
 
     def toggle_enabled(icon, _):
         sync.enabled = not sync.enabled
@@ -396,7 +431,7 @@ def main():
         icon.visible = True
         if "--autostart" not in sys.argv:
             icon.notify("Läuft jetzt im Hintergrund. Öffne in Songs Together den Mini-Player – "
-                        "er erscheint dann automatisch zusammen mit Spotify.", APP_NAME)
+                        "er ist dann da, solange Spotify offen ist.", APP_NAME)
 
     try:
         icon.run(setup=setup)

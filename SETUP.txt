@@ -62,8 +62,8 @@ Tastenkürzel:  Leertaste = Play/Pause
 
 SONGS TOGETHER SYNC (nur Windows, optional)
 Koppelt den Mini-Player an die Spotify-App für Windows:
-- Spotify im Vordergrund              -> Mini-Player erscheint
-- Spotify minimiert / im Hintergrund  -> Mini-Player verschwindet
+- Spotify-Fenster offen (auch ohne Fokus) -> Mini-Player ist sichtbar
+- Spotify minimiert / geschlossen         -> Mini-Player verschwindet sofort
 - Spotify-Fenster verschieben         -> Mini-Player wandert mit
 Einrichten:
 1. Herunterladen: Einstellungen (Zahnrad) -> Link "Songs Together Sync", oder direkt
