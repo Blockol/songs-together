@@ -744,7 +744,16 @@ function bindDragAndDrop() {
   });
 
   // Queue intern umsortieren
-  const list = $('#queue');
+  bindQueueReorder($('#queue'));
+
+  zone.addEventListener('dragover', (e) => { if (isExternal(e)) zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', () => zone.classList.remove('drag-over'));
+}
+
+// Warteschlange per Drag & Drop umsortieren (Hauptseite und Mini-Player)
+function bindQueueReorder(list) {
+  const isInternal = (e) => e.dataTransfer?.types.includes(INTERNAL);
   let dragUid = null;
   const clearMarks = () => list.querySelectorAll('.drop-before, .drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
 
@@ -764,12 +773,14 @@ function bindDragAndDrop() {
   list.addEventListener('dragover', (e) => {
     if (!isInternal(e)) return;
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
     const li = e.target.closest('.track');
     clearMarks();
     if (!li) return;
     const r = li.getBoundingClientRect();
     li.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-before' : 'drop-after');
   });
+  list.addEventListener('dragleave', (e) => { if (!list.contains(e.relatedTarget)) clearMarks(); });
   list.addEventListener('drop', (e) => {
     if (!isInternal(e)) return;
     e.preventDefault();
@@ -779,15 +790,12 @@ function bindDragAndDrop() {
     if (!li || !uid || li.dataset.uid === uid) return;
     const from = room.queue.findIndex((t) => t.uid === uid);
     let to = room.queue.findIndex((t) => t.uid === li.dataset.uid);
+    if (from < 0 || to < 0) return;
     const r = li.getBoundingClientRect();
     if (e.clientY >= r.top + r.height / 2) to++;
     if (from < to) to--;
     send({ type: 'move', uid, to });
   });
-
-  zone.addEventListener('dragover', (e) => { if (isExternal(e)) zone.classList.add('drag-over'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', () => zone.classList.remove('drag-over'));
 }
 
 // ============================================================ Suche
@@ -1234,6 +1242,7 @@ async function openMini() {
     applyVolume();
   });
   m('queue').addEventListener('click', onQueueAction);
+  bindQueueReorder(m('queue')); // Songs hoch und runter ziehen
 
   // Songs reinziehen (z. B. aus der Spotify-App)
   let depth = 0;
@@ -1315,7 +1324,6 @@ function renderMini() {
   mini.doc.title = cur ? `${cur.name} · ${miniTitle()}` : miniTitle();
   m('queue').replaceChildren(...room.queue.map((t, i) => {
     const li = trackRow(t, { index: i, queue: true });
-    li.draggable = false;
     return mini.doc.importNode(li, true);
   }));
   m('qempty').classList.toggle('hidden', room.queue.length > 0);
