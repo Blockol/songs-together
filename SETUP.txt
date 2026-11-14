@@ -1,0 +1,96 @@
+SONGS TOGETHER – EINRICHTUNG & BENUTZUNG
+=========================================
+
+Website:            https://blockol.github.io/songs-together/
+GitHub-Repo:        https://github.com/Blockol/songs-together
+Spotify-Dashboard:  https://developer.spotify.com/dashboard  (App "SONGS TOGETHER")
+
+
+BEREITS ERLEDIGT
+----------------
+[x] Spotify-App angelegt (Web API + Web Playback SDK)
+[x] Redirect URI eingetragen: https://blockol.github.io/songs-together/
+[x] Website läuft auf GitHub Pages und ist mit Spotify verbunden
+
+
+1. NEUE FREUNDE FREISCHALTEN (jedes Mal, wenn jemand Neues mitmachen will)
+--------------------------------------------------------------------------
+1. Spotify-Dashboard öffnen -> App "SONGS TOGETHER" anklicken
+2. Reiter "User Management"
+3. Name + E-Mail-Adresse des SPOTIFY-Accounts der Person eintragen -> speichern
+
+Ohne Eintrag kommt die Person nicht rein (Fehler "Zugriff verweigert").
+Gilt für JEDEN Nutzer, auch Freunde von Freunden, die eigene Räume machen.
+Spotify begrenzt die Zahl der Nutzer im Development Mode.
+
+
+2. VORAUSSETZUNGEN FÜR JEDEN, DER MITHÖRT
+-----------------------------------------
+- Spotify Premium
+- Computer mit Chrome oder Edge (Firefox geht auch, aber ohne angepinnten Mini-Player)
+- Auf dem Handy funktioniert es nicht (Spotify erlaubt keine Wiedergabe im Handy-Browser)
+
+
+3. ZUSAMMEN HÖREN
+-----------------
+1. Website öffnen -> "Mit Spotify anmelden"
+2. "Neuen Raum erstellen" -> oben "Link kopieren" -> Link an Freunde schicken
+3. Freunde öffnen den Link -> anmelden -> "Raum betreten"
+4. Songs hinzufügen: aus der Spotify-App in die Warteschlange ziehen,
+   Link mit Strg+V einfügen oder rechts suchen
+
+Gut zu wissen:
+- Wer den Raum erstellt, ist Host. Geht der Host, übernimmt automatisch der Nächste.
+- Der Raum besteht, solange mindestens eine Person drin ist.
+- Jeder kann eigene Räume erstellen, mehrere Räume können gleichzeitig laufen.
+- Pro Spotify-Account immer nur ein Raum gleichzeitig.
+- Lautstärke und Design gelten nur für einen selbst.
+
+Tastenkürzel:  Leertaste = Play/Pause
+               Pfeil links/rechts = 10 Sekunden spulen
+               Shift + Pfeil links/rechts = vorheriger/nächster Song
+
+
+4. MINI-PLAYER
+--------------
+- Im Raum oben rechts: Symbol neben dem Zahnrad -> kleines Fenster
+- Einstellungen (Zahnrad) -> "Immer im Vordergrund (anpinnen)":
+  An  = bleibt über allen Fenstern, auch über Spotify (nur Chrome/Edge)
+  Aus = normales kleines Fenster
+- Die Leiste oben mit "blockol.github.io" kommt von Chrome und lässt sich nicht entfernen.
+- Der Haupt-Tab muss offen bleiben (darf im Hintergrund sein), dort läuft die Musik.
+
+
+5. WENN ETWAS NICHT GEHT
+------------------------
+"Zugriff verweigert" beim Login
+    -> Person ist nicht unter "User Management" eingetragen
+       (oder mit einer anderen E-Mail als ihrem Spotify-Account)
+
+"INVALID_CLIENT: Invalid redirect URI"
+    -> Im Dashboard unter Settings muss genau stehen: https://blockol.github.io/songs-together/
+       (mit Schrägstrich am Ende, danach "Add" und "Save")
+
+Keine Musik / "Spotify Premium benötigt"
+    -> Account hat kein Premium
+
+"Die Wiedergabe wurde auf ein anderes Gerät übertragen"
+    -> Spotify wurde woanders gestartet (Handy/App). Auf der Website Play drücken.
+
+Neue Funktionen fehlen / Zahnrad o. Ä. reagiert nicht
+    -> Seite mit Strg+F5 neu laden (Browser-Cache)
+
+Verbindung zum Raum klappt nicht
+    -> Seite neu laden. In sehr strengen Netzwerken (Firma, Uni) kann die
+       direkte Verbindung blockiert sein.
+
+
+6. WEBSITE ÄNDERN (für später)
+------------------------------
+- Alle Dateien der Website liegen im Ordner docs/
+- Nach Änderungen die Versionsnummer "?v=..." in docs/index.html, docs/app.js und
+  docs/net.js überall um eins erhöhen (sonst mischt der Browser alte und neue Dateien)
+- Hochladen: git add -A, git commit -m "...", git push
+  -> nach ca. 1 Minute ist die neue Version online
+- Lokal testen: im Projektordner "npm start" -> http://127.0.0.1:3000/
+  (dafür im Spotify-Dashboard zusätzlich http://127.0.0.1:3000/ als Redirect URI eintragen)
