@@ -1149,10 +1149,16 @@ async function openMini() {
   if (mini) { closeMini(); return; }
   const { W, H, pos } = miniPlacement();
   let win = null;
-  const pinPopup = miniPinned() && !PIP_SUPPORTED;
+  let pinPopup = miniPinned() && !PIP_SUPPORTED;
   try {
-    if (miniPinned() && PIP_SUPPORTED) win = await window.documentPictureInPicture.requestWindow({ width: W, height: H });
-    else win = window.open('', 'songs-together-mini', `popup,width=${W},height=${H}${pos}`);
+    if (miniPinned() && PIP_SUPPORTED) {
+      // Manche Browser (z. B. Opera) kennen die Funktion, öffnen aber kein Fenster →
+      // dann normales Popup, das „Songs Together Sync“ anpinnt
+      try { win = await window.documentPictureInPicture.requestWindow({ width: W, height: H }); }
+      catch (e) { console.warn('Picture-in-Picture nicht möglich:', e); win = null; }
+      if (!win?.document?.body) { win = null; pinPopup = true; }
+    }
+    if (!win) win = window.open('', 'songs-together-mini', `popup,width=${W},height=${H}${pos}`);
   } catch (e) {
     toast('Mini-Player konnte nicht geöffnet werden: ' + e.message, true);
     return;
