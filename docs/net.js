@@ -14,6 +14,41 @@ const HOST_SILENCE_MS = 9000;     // so lange ohne Lebenszeichen → Host gilt a
 const CLIENT_SILENCE_MS = 20000;  // so lange ohne Ping → Teilnehmer wird entfernt
 const PING_INTERVAL_MS = 2500;
 const PEER_OPTS = { debug: 1 };
+// PeerJS lehnt JSON-Nachrichten ab ~16 KB ab ("Message too big") und meldet dann einen Verbindungsfehler.
+// Große Nachrichten (z. B. Zustand mit langer Warteschlange) werden deshalb in Stücke geteilt.
+// 5000 Zeichen ergeben auch bei Umlauten/Anführungszeichen höchstens ~15 KB pro Stück.
+const CHUNK_CHARS = 5000;
+
+function sendMsg(conn, msg) {
+  const text = JSON.stringify(msg);
+  if (text.length <= CHUNK_CHARS) { conn.send(msg); return; }
+  const id = Math.random().toString(36).slice(2);
+  const n = Math.ceil(text.length / CHUNK_CHARS);
+  for (let i = 0; i < n; i++) conn.send({ type: 'chunk', id, i, n, d: text.slice(i * CHUNK_CHARS, (i + 1) * CHUNK_CHARS) });
+}
+
+// Liefert eine Funktion, die eingehende Nachrichten durchreicht und Stücke wieder zusammensetzt
+// (gibt null zurück, solange eine Nachricht noch nicht vollständig ist).
+function makeReceiver() {
+  const parts = new Map(); // id -> { n, got, list }
+  return (msg) => {
+    if (!msg || typeof msg !== 'object') return null;
+    if (msg.type !== 'chunk') return msg;
+    const n = Number(msg.n) | 0;
+    const i = Number(msg.i) | 0;
+    if (typeof msg.id !== 'string' || typeof msg.d !== 'string' || n < 1 || n > 2000 || i < 0 || i >= n) return null;
+    let p = parts.get(msg.id);
+    if (!p) {
+      if (parts.size > 20) parts.delete(parts.keys().next().value); // verwaiste Reste begrenzen
+      p = { n, got: 0, list: new Array(n) };
+      parts.set(msg.id, p);
+    }
+    if (p.list[i] === undefined) { p.list[i] = msg.d; p.got++; }
+    if (p.got < p.n) return null;
+    parts.delete(msg.id);
+    try { return JSON.parse(p.list.join('')); } catch { return null; }
+  };
+}
 
 export class Net {
   /**
@@ -149,9 +184,11 @@ export class Net {
     for (let i = 0; i < 5; i++) this.later(ping, i * 120);
     conn.send({ type: 'join', user: this.user });
 
-    conn.on('data', (msg) => {
+    const receive = makeReceiver();
+    conn.on('data', (raw) => {
       lastHostMsg = Date.now();
-      if (!msg || typeof msg !== 'object') return;
+      const msg = receive(raw);
+      if (!msg) return;
       if (msg.type === 'pong') {
         this.onPong(msg);
         if (!this.clockReady) {
@@ -248,15 +285,18 @@ export class Net {
 
   acceptClient(conn) {
     const cid = conn.peer;
+    const receive = makeReceiver();
     conn.on('open', () => {
       const old = this.clients.get(cid);
       if (old && old.conn !== conn) { try { old.conn.close(); } catch { /* ignore */ } }
       this.clients.set(cid, { conn, lastSeen: Date.now() });
     });
-    conn.on('data', (msg) => {
+    conn.on('data', (raw) => {
       const c = this.clients.get(cid);
-      if (!c || c.conn !== conn || !msg || typeof msg !== 'object') return;
+      if (!c || c.conn !== conn) return;
       c.lastSeen = Date.now();
+      const msg = receive(raw);
+      if (!msg) return;
       if (msg.type === 'ping') { conn.send({ type: 'pong', t0: msg.t0, serverTime: Date.now() }); return; }
       if (msg.type === 'join') { this.room.join(cid, { ...msg.user, host: false }); return; }
       this.room.handle(cid, msg);
@@ -278,7 +318,7 @@ export class Net {
       this.onMessage(msg);
     }
     for (const [cid, { conn }] of this.clients) {
-      if ((to === null || to === cid) && conn.open) { try { conn.send(msg); } catch { /* ignore */ } }
+      if ((to === null || to === cid) && conn.open) { try { sendMsg(conn, msg); } catch { /* ignore */ } }
     }
   }
 
@@ -286,6 +326,6 @@ export class Net {
 
   send(msg) {
     if (this.isHost) { this.room?.handle(this.cid, msg); return; }
-    if (this.conn?.open) this.conn.send(msg);
+    if (this.conn?.open) { try { sendMsg(this.conn, msg); } catch { /* ignore */ } }
   }
 }

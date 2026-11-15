@@ -3,7 +3,7 @@
 // der Server gibt Song + Position vor, jeder Client korrigiert seine Abweichung laufend.
 
 import { CLIENT_ID } from './config.js?v=12';
-import { Net } from './net.js?v=14';
+import { Net } from './net.js?v=15';
 import { ColorWheel, deriveTheme, hexToRgb } from './colorwheel.js?v=12';
 
 const $ = (s) => document.querySelector(s);
