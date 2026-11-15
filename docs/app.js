@@ -16,6 +16,7 @@ const REDIRECT_URI = BASE;
 const SYNC_INTERVAL_MS = 1000;   // wie oft die eigene Position geprüft wird
 const DRIFT_THRESHOLD_MS = 180;  // ab dieser Abweichung wird nachjustiert
 const SEEK_COOLDOWN_MS = 1200;
+const DUO_DRIFT_THRESHOLD_MS = 60; // genauere Toleranz, solange Duo-Sync an ist
 
 let me = null;          // Spotify-Profil
 let room = null;        // letzter Raumzustand vom Server
@@ -534,7 +535,9 @@ async function doSync(force) {
 
   const forceSeek = sync.forceSeek && Math.abs(drift) > 25;
   sync.forceSeek = false;
-  if (forceSeek || Math.abs(drift) > DRIFT_THRESHOLD_MS) {
+  // Im Duo-Sync deutlich genauer nachregeln – die Verschiebung selbst ist ja nur ein paar hundert ms groß
+  const threshold = duoDelay ? DUO_DRIFT_THRESHOLD_MS : DRIFT_THRESHOLD_MS;
+  if (forceSeek || Math.abs(drift) > threshold) {
     sync.strikes++;
     const cooldownOver = Date.now() - sync.lastSeekAt > SEEK_COOLDOWN_MS;
     // Einzelne Ausreißer ignorieren: erst bei 2 Messungen in Folge (oder großer Abweichung) korrigieren
@@ -549,7 +552,13 @@ async function doSync(force) {
     setStatus('warn', `Gleiche ab… (${Math.round(drift)} ms)`);
   } else {
     sync.strikes = 0;
-    setStatus('ok', `Synchron (±${Math.abs(Math.round(drift))} ms)`);
+    if (duoDelay) {
+      // Tatsächlich gemessene Verschiebung gegenüber dem Raum (positiv = ich höre später)
+      const actual = Math.round(-(drift - duoDelay));
+      setStatus('ok', `Duo-Sync aktiv: gemessen ${Math.abs(actual)} ms ${actual >= 0 ? 'später' : 'früher'}`);
+    } else {
+      setStatus('ok', `Synchron (±${Math.abs(Math.round(drift))} ms)`);
+    }
   }
 }
 
