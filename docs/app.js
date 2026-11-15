@@ -533,7 +533,7 @@ async function doSync(force) {
     sync.measure = null;
   }
 
-  const forceSeek = sync.forceSeek && Math.abs(drift) > 25;
+  const forceSeek = sync.forceSeek; // Knopfdruck beim Duo-Sync → immer sofort an die neue Stelle springen
   sync.forceSeek = false;
   // Im Duo-Sync deutlich genauer nachregeln – die Verschiebung selbst ist ja nur ein paar hundert ms groß
   const threshold = duoDelay ? DUO_DRIFT_THRESHOLD_MS : DRIFT_THRESHOLD_MS;
