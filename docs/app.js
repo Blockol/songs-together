@@ -356,6 +356,32 @@ function expectedPos() {
   return clampNum(pos, 0, room.current.durationMs);
 }
 
+// Duo-Sync: eigene Musik absichtlich später abspielen (gilt nur für mich), damit die Stimme des
+// Partners, die über Discord verzögert ankommt, genau zur eigenen Musik passt.
+const MAX_DUO_DELAY = 1500;
+let duoDelay = clampNum(Number(localStorage.getItem('duoDelay')) || 0, 0, MAX_DUO_DELAY);
+
+// Position, an der MEINE Wiedergabe gerade sein soll (kann am Songanfang negativ sein = noch warten)
+function rawPlayPos() {
+  if (!room?.current) return 0;
+  const pos = room.playing ? room.positionMs + (serverNow() - room.refTime) : room.positionMs;
+  return Math.min(pos, room.current.durationMs) - duoDelay;
+}
+function playPos() { return room?.current ? clampNum(rawPlayPos(), 0, room.current.durationMs) : 0; }
+
+function setDuoDelay(ms) {
+  duoDelay = clampNum(Math.round(ms), 0, MAX_DUO_DELAY);
+  localStorage.setItem('duoDelay', String(duoDelay));
+  renderDuo();
+  sync.forceSeek = true; // auch kleine Änderungen sofort umsetzen
+  runSync(true);
+}
+
+function renderDuo() {
+  $('#duo-val').textContent = duoDelay ? `${duoDelay} ms später` : 'aus';
+  $('#duo').classList.toggle('on', duoDelay > 0);
+}
+
 // ============================================================ Player + Synchronisation
 
 let sdkReady = null;
@@ -412,7 +438,7 @@ const sync = {
   measure: null,       // { syncId } – nach einem Seek die Latenz nachmessen
   loading: null, loadingAt: 0, justLoaded: false,
   wasActive: false, detached: false,
-  lastDrift: null,
+  lastDrift: null, forceSeek: false,
 };
 
 async function runSync(force = false) {
@@ -450,6 +476,14 @@ async function doSync(force) {
   const lt = st?.track_window?.current_track;
   const matches = lt && [lt.uri, lt.id, lt.linked_from?.uri, lt.linked_from?.id].some((x) => x && (x === cur.uri || x === cur.id));
 
+  // Duo-Sync: Neuer Song hat für mich noch nicht begonnen → kurz warten (vorheriger Song läuft aus)
+  const wait = room.playing ? -rawPlayPos() : 0;
+  if (wait > 0) {
+    setTimeout(() => runSync(true), wait + 20);
+    setStatus('ok', `Duo-Sync: startet in ${Math.round(wait)} ms`);
+    return;
+  }
+
   // Falscher (oder kein) Song geladen → richtigen Song an der richtigen Stelle starten
   if (!matches) {
     const key = cur.uid + ':' + room.syncId;
@@ -458,7 +492,7 @@ async function doSync(force) {
     setStatus('warn', 'Lade Song…');
     await api(`/me/player/play?device_id=${deviceId}`, {
       method: 'PUT',
-      body: { uris: [cur.uri], position_ms: Math.round(expectedPos()) },
+      body: { uris: [cur.uri], position_ms: Math.round(playPos()) },
     });
     sync.justLoaded = true;
     setTimeout(() => runSync(false), 600);
@@ -468,7 +502,7 @@ async function doSync(force) {
   if (sync.justLoaded) { force = true; sync.justLoaded = false; }
 
   // Kurz vor Songende nicht mehr eingreifen – der Server schaltet gleich weiter
-  if (room.playing && expectedPos() > cur.durationMs - 1500) { setStatus('ok', 'Synchron'); return; }
+  if (room.playing && playPos() > cur.durationMs - 1500) { setStatus('ok', 'Synchron'); return; }
 
   if (room.playing && st.paused) {
     await player.resume();
@@ -477,7 +511,7 @@ async function doSync(force) {
   }
   if (!room.playing && !st.paused) await player.pause();
 
-  const expected = expectedPos();
+  const expected = playPos();
   const drift = st.position - expected; // positiv = wir sind voraus
   sync.lastDrift = drift;
 
@@ -496,11 +530,13 @@ async function doSync(force) {
     sync.measure = null;
   }
 
-  if (Math.abs(drift) > DRIFT_THRESHOLD_MS) {
+  const forceSeek = sync.forceSeek && Math.abs(drift) > 25;
+  sync.forceSeek = false;
+  if (forceSeek || Math.abs(drift) > DRIFT_THRESHOLD_MS) {
     sync.strikes++;
     const cooldownOver = Date.now() - sync.lastSeekAt > SEEK_COOLDOWN_MS;
     // Einzelne Ausreißer ignorieren: erst bei 2 Messungen in Folge (oder großer Abweichung) korrigieren
-    if (force || (cooldownOver && (sync.strikes >= 2 || Math.abs(drift) > 1500))) {
+    if (force || forceSeek || (cooldownOver && (sync.strikes >= 2 || Math.abs(drift) > 1500))) {
       const target = clampNum(expected + sync.lead, 0, cur.durationMs - 500);
       await player.seek(Math.round(target));
       sync.lastSeekAt = Date.now();
@@ -584,7 +620,7 @@ let seeking = false;
 function renderProgress() {
   if (!room) return;
   const dur = room.current?.durationMs || 0;
-  const pos = expectedPos();
+  const pos = playPos();
   $('#time-dur').textContent = fmt(dur);
   if (!seeking) {
     $('#time-cur').textContent = fmt(pos);
@@ -652,6 +688,13 @@ function bindControls() {
     applyVolume();
   });
   $('#btn-mute').onclick = () => { muted = !muted; applyVolume(); };
+
+  $('#duo').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-duo]');
+    if (!b) return;
+    setDuoDelay(b.dataset.duo === '0' ? 0 : duoDelay + Number(b.dataset.duo));
+  });
+  renderDuo();
 
   $('#btn-copy').onclick = async () => {
     const link = `${BASE}?room=${roomId}`;
@@ -1361,7 +1404,7 @@ function renderMiniProgress() {
   if (!mini || !room) return;
   const { m } = mini;
   const dur = room.current?.durationMs || 0;
-  const pos = expectedPos();
+  const pos = playPos();
   m('dur').textContent = fmt(dur);
   if (!mini.seeking) {
     m('cur').textContent = fmt(pos);
