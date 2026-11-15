@@ -359,7 +359,7 @@ function expectedPos() {
 
 // Duo-Sync: eigene Musik absichtlich später abspielen (gilt nur für mich), damit die Stimme des
 // Partners, die über Discord verzögert ankommt, genau zur eigenen Musik passt.
-const MAX_DUO_DELAY = 3000;
+const MAX_DUO_DELAY = 24 * 3600 * 1000; // praktisch unbegrenzt (endlicher Wert, damit Rechnen/Speichern sicher bleibt)
 // Positiv = ich höre später (Stimme des Partners passt für mich), negativ = ich höre früher
 // (meine Stimme kommt beim Partner passend an).
 let duoDelay = clampNum(Number(localStorage.getItem('duoDelay')) || 0, -MAX_DUO_DELAY, MAX_DUO_DELAY);
@@ -381,7 +381,9 @@ function setDuoDelay(ms) {
 }
 
 function renderDuo() {
-  $('#duo-val').textContent = duoDelay > 0 ? `${duoDelay} ms später` : duoDelay < 0 ? `${-duoDelay} ms früher` : 'aus';
+  const abs = Math.abs(duoDelay);
+  const amount = abs >= 1000 ? `${(abs / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} s` : `${abs} ms`;
+  $('#duo-val').textContent = duoDelay > 0 ? `${amount} später` : duoDelay < 0 ? `${amount} früher` : 'aus';
   $('#duo').classList.toggle('on', duoDelay !== 0);
 }
 
